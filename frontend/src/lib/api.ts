@@ -220,6 +220,13 @@ export const api = {
       body: JSON.stringify(tickers ? { tickers } : {}),
       signal: AbortSignal.timeout(300_000),
     }),
+  runScanAsync: (tickers?: string[]) =>
+    fetchAPI<{ run_id: string; status: string }>('/api/v1/scan/run/async', {
+      method: 'POST',
+      body: JSON.stringify(tickers ? { tickers } : {}),
+    }),
+  getScanRun: (runId: string) =>
+    fetchAPI<ScanRunResponse>(`/api/v1/scan/run/${runId}`),
   scanResults: () => fetchAPI<{ run_id: string; status: string; total_scanned: number; total_recommended: number; total_watchlist: number; total_rejected: number; started_at: string; completed_at: string | null }[]>('/api/v1/scan/results'),
   candidate: (ticker: string) => fetchAPI<any>(`/api/v1/candidates/${ticker}`),
   buildTrade: (ticker: string) =>

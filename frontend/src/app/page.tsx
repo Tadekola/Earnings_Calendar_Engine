@@ -9,7 +9,7 @@ import {
   UpcomingEarningsResponse,
 } from "@/lib/api";
 import { useToast } from "@/components/Toast";
-import { useScanProgress } from "@/lib/useScanProgress";
+import { useScanProgress, ScanCompleteEvent, ScanErrorEvent } from "@/lib/useScanProgress";
 
 export default function Dashboard() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -19,8 +19,30 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const progress = useScanProgress();
   const { toast } = useToast();
+
+  const progress = useScanProgress(
+    async (e: ScanCompleteEvent) => {
+      setScanResult(null);
+      setScanning(false);
+      progress.disconnect();
+      toast(`Scan complete — ${e.total_recommended} recommended, ${e.total_watchlist} watchlist`, "success");
+      try {
+        const [s, result] = await Promise.all([
+          api.dashboardSummary(),
+          api.getScanRun(e.run_id),
+        ]);
+        setSummary(s);
+        setScanResult(result);
+      } catch {}
+    },
+    (e: ScanErrorEvent) => {
+      setScanning(false);
+      progress.disconnect();
+      setError(e.error || "Scan failed");
+      toast(e.error || "Scan failed", "error");
+    },
+  );
 
   useEffect(() => {
     loadDashboard();

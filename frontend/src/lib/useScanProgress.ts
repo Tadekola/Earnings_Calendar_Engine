@@ -13,10 +13,31 @@ export interface ScanProgressEvent {
   pct: number;
 }
 
-export function useScanProgress() {
+export interface ScanCompleteEvent {
+  type: "scan_complete";
+  run_id: string;
+  total_scanned: number;
+  total_recommended: number;
+  total_watchlist: number;
+  total_rejected: number;
+}
+
+export interface ScanErrorEvent {
+  type: "scan_error";
+  run_id: string;
+  error: string;
+}
+
+export type ScanWsEvent = ScanProgressEvent | ScanCompleteEvent | ScanErrorEvent;
+
+export function useScanProgress(onComplete?: (e: ScanCompleteEvent) => void, onError?: (e: ScanErrorEvent) => void) {
   const [events, setEvents] = useState<ScanProgressEvent[]>([]);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  const onErrorRef = useRef(onError);
+  onCompleteRef.current = onComplete;
+  onErrorRef.current = onError;
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -32,8 +53,14 @@ export function useScanProgress() {
     ws.onerror = () => setConnected(false);
     ws.onmessage = (e) => {
       try {
-        const data: ScanProgressEvent = JSON.parse(e.data);
-        setEvents((prev) => [...prev, data]);
+        const data: ScanWsEvent = JSON.parse(e.data);
+        if (data.type === "ticker_complete") {
+          setEvents((prev) => [...prev, data]);
+        } else if (data.type === "scan_complete") {
+          onCompleteRef.current?.(data);
+        } else if (data.type === "scan_error") {
+          onErrorRef.current?.(data);
+        }
       } catch {}
     };
   }, []);

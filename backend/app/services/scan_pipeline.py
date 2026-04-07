@@ -198,20 +198,22 @@ class ScanPipeline:
                 except Exception:
                     return None
 
-            if pf.REQUIRE_WEEKLY_OPTIONS:
-                try:
-                    expirations = await self._registry.options.get_expirations(t)
-                    if not expirations:
-                        return None
-                    today = date.today()
-                    has_weeklies = any(
-                        0 < (exp - today).days <= 14
-                        for exp in expirations
-                    )
+            try:
+                expirations = await self._registry.options.get_expirations(t)
+                if not expirations:
+                    return None
+                today = date.today()
+                future_exps = [e for e in expirations if e > today]
+
+                if len(future_exps) < pf.MIN_EXPIRATION_COUNT:
+                    return None
+
+                if pf.REQUIRE_WEEKLY_OPTIONS:
+                    has_weeklies = any(0 < (e - today).days <= 14 for e in future_exps)
                     if not has_weeklies:
                         return None
-                except Exception:
-                    return None
+            except Exception:
+                return None
 
             return t
 
