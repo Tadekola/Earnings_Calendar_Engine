@@ -399,6 +399,30 @@ class FMPPriceProvider(PriceProvider):
 
         return sorted(records, key=lambda r: r.trade_date)
 
+    async def get_bulk_quotes(self, tickers: list[str]) -> dict[str, dict[str, Any]]:
+        """Fetch price + market-cap data for multiple tickers concurrently.
+        Returns dict keyed by uppercase ticker symbol."""
+        import asyncio
+
+        async def _fetch_one(ticker: str) -> tuple[str, dict[str, Any] | None]:
+            try:
+                data = await self._request("/quote", {"symbol": ticker.upper()})
+                if isinstance(data, list) and data:
+                    return ticker.upper(), data[0]
+            except Exception as e:
+                logger.warning("fmp_quote_single_failed", ticker=ticker, error=str(e))
+            return ticker.upper(), None
+
+        concurrency = 10
+        results: dict[str, dict[str, Any]] = {}
+        for i in range(0, len(tickers), concurrency):
+            batch = tickers[i : i + concurrency]
+            pairs = await asyncio.gather(*[_fetch_one(t) for t in batch])
+            for sym, item in pairs:
+                if item:
+                    results[sym] = item
+        return results
+
     async def health_check(self) -> ProviderMeta:
         try:
             data = await self._request("/quote", {"symbol": "AAPL"})

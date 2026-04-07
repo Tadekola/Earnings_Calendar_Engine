@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.enums import Environment, OperatingMode, UniverseSource
+from app.core.enums import Environment, OperatingMode, UniverseSource  # noqa: F401
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 ENV_FILE = PROJECT_ROOT.parent / ".env"
@@ -113,6 +113,16 @@ class EarningsWindowSettings(BaseSettings):
     REQUIRE_CONFIRMED_DATE: bool = True
 
 
+class SP500PreFilterSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="PREFILTER_", env_file=str(ENV_FILE), extra="ignore")
+
+    ENABLED: bool = True
+    MIN_STOCK_PRICE: float = 50.0
+    MIN_MARKET_CAP_B: float = 10.0
+    MIN_AVG_OPTION_VOLUME: int = 1000
+    REQUIRE_WEEKLY_OPTIONS: bool = True
+
+
 class DataSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(ENV_FILE), extra="ignore")
 
@@ -152,6 +162,7 @@ class Settings(BaseSettings):
     liquidity: LiquiditySettings = LiquiditySettings()
     earnings_window: EarningsWindowSettings = EarningsWindowSettings()
     data: DataSettings = DataSettings()
+    prefilter: SP500PreFilterSettings = SP500PreFilterSettings()
 
     DEFAULT_UNIVERSE: list[str] = [
         "SPY", "QQQ", "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL",

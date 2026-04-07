@@ -166,8 +166,69 @@ class ScanPipeline:
             logger.warning("sp500_universe_no_earnings", reason="No S&P 500 tickers have earnings in window, using full list")
             return sp500_tickers
 
+        if self._settings.prefilter.ENABLED:
+            prefiltered = await self._apply_quality_prefilter(prefiltered)
+
         logger.info("sp500_universe_ready", total=len(prefiltered))
         return prefiltered
+
+    async def _apply_quality_prefilter(self, tickers: list[str]) -> list[str]:
+        """Drop low-quality tickers before running the full options pipeline.
+        Uses Tradier expirations (cheap, 1 call per ticker) to check for weekly options,
+        and FMP quote (cheap) to check price + market cap.
+        Runs concurrently in batches to stay fast."""
+        import asyncio
+        from app.providers.live.fmp import FMPPriceProvider
+
+        pf = self._settings.prefilter
+        price_provider = self._registry.price
+        has_fmp = isinstance(price_provider, FMPPriceProvider)
+
+        logger.info("quality_prefilter_start", candidates=len(tickers))
+
+        async def _check_ticker(ticker: str) -> str | None:
+            t = ticker.upper()
+            if has_fmp:
+                try:
+                    quote_data = await price_provider.get_current_price(t)
+                    if quote_data is None:
+                        return None
+                    if quote_data.close < pf.MIN_STOCK_PRICE:
+                        return None
+                except Exception:
+                    return None
+
+            if pf.REQUIRE_WEEKLY_OPTIONS:
+                try:
+                    expirations = await self._registry.options.get_expirations(t)
+                    if not expirations:
+                        return None
+                    today = date.today()
+                    has_weeklies = any(
+                        0 < (exp - today).days <= 14
+                        for exp in expirations
+                    )
+                    if not has_weeklies:
+                        return None
+                except Exception:
+                    return None
+
+            return t
+
+        concurrency = 15
+        passed: list[str] = []
+        for i in range(0, len(tickers), concurrency):
+            batch = tickers[i : i + concurrency]
+            results = await asyncio.gather(*[_check_ticker(t) for t in batch])
+            passed.extend(r for r in results if r is not None)
+
+        logger.info(
+            "quality_prefilter_done",
+            before=len(tickers),
+            after=len(passed),
+            dropped=len(tickers) - len(passed),
+        )
+        return passed if passed else tickers
 
     async def _scan_ticker(self, ticker: str) -> TickerScanResult:
         # Stage 1: Earnings Eligibility

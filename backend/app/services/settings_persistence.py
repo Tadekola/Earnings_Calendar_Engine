@@ -24,6 +24,10 @@ SETTING_MAP: dict[str, tuple[str, str, str]] = {
     "exit_days_before_earnings": ("earnings_window.EXIT_DAYS_BEFORE_EARNINGS", "earnings", "Days before earnings to exit"),
     "min_avg_stock_volume": ("liquidity.MIN_AVG_STOCK_VOLUME", "liquidity", "Minimum average stock volume"),
     "min_avg_option_volume": ("liquidity.MIN_AVG_OPTION_VOLUME", "liquidity", "Minimum average option volume"),
+    "prefilter_enabled": ("prefilter.ENABLED", "prefilter", "Enable SP500 quality pre-filter"),
+    "prefilter_min_price": ("prefilter.MIN_STOCK_PRICE", "prefilter", "Min stock price for SP500 pre-filter"),
+    "prefilter_min_mktcap_b": ("prefilter.MIN_MARKET_CAP_B", "prefilter", "Min market cap (billions) for SP500 pre-filter"),
+    "prefilter_require_weeklies": ("prefilter.REQUIRE_WEEKLY_OPTIONS", "prefilter", "Require weekly options for SP500 pre-filter"),
 }
 
 
