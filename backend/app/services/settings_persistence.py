@@ -85,6 +85,7 @@ class SettingsPersistenceService:
     @staticmethod
     def _set_nested(obj: Any, path: str, raw_value: str) -> None:
         """Set a dotted attribute path on an object, coercing the value."""
+        from enum import Enum
         parts = path.split(".")
         target = obj
         for part in parts[:-1]:
@@ -95,11 +96,13 @@ class SettingsPersistenceService:
 
         # Coerce to the same type as the current value
         if isinstance(current, bool):
-            coerced = raw_value.lower() in ("true", "1", "yes")
+            coerced: Any = raw_value.lower() in ("true", "1", "yes")
         elif isinstance(current, int):
             coerced = int(raw_value)
         elif isinstance(current, float):
             coerced = float(raw_value)
+        elif isinstance(current, Enum):
+            coerced = type(current)(raw_value.upper())
         else:
             coerced = raw_value
 
