@@ -95,11 +95,11 @@ class LiquiditySettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LIQ_", env_file=str(ENV_FILE), extra="ignore")
 
     MIN_AVG_STOCK_VOLUME: int = 2_000_000
-    MIN_AVG_OPTION_VOLUME: int = 500
+    MIN_AVG_OPTION_VOLUME: int = 50
     MIN_OPEN_INTEREST: int = 100
-    MAX_BID_ASK_PCT: float = 0.05
-    MAX_BID_ASK_ABS: float = 0.50
-    MAX_SPREAD_TO_MID: float = 0.10
+    MAX_BID_ASK_PCT: float = 0.25
+    MAX_BID_ASK_ABS: float = 2.00
+    MAX_SPREAD_TO_MID: float = 0.30
     MIN_STRIKE_DENSITY: int = 5
     STRICT_SHORT_DATED_MULTIPLIER: float = 1.5
 

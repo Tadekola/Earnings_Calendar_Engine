@@ -69,8 +69,18 @@ class LiquidityEngine:
                 rejection_codes=[RejectionReason.POOR_OPTIONS_LIQUIDITY],
             )
 
+        # Restrict volume/spread checks to ATM-adjacent strikes (±10% of spot)
+        # Deep OTM/ITM strikes have near-zero volume and wide spreads by design
+        spot = chain.spot_price
+        atm_margin = spot * 0.10
+        def _is_atm(o: OptionRecord) -> bool:
+            return abs(o.strike - spot) <= atm_margin
+
+        front_atm = [o for o in front_opts if _is_atm(o)] or front_opts
+        back_atm = [o for o in back_opts if _is_atm(o)] or back_opts
+
         # 1. Average option volume
-        all_relevant = front_opts + back_opts
+        all_relevant = front_atm + back_atm
         avg_vol = sum(o.volume or 0 for o in all_relevant) / len(all_relevant) if all_relevant else 0
         details["avg_option_volume"] = avg_vol
         if avg_vol < self._settings.MIN_AVG_OPTION_VOLUME:
@@ -81,7 +91,7 @@ class LiquidityEngine:
         sub_scores.append(min(avg_vol / self._settings.MIN_AVG_OPTION_VOLUME, 2.0) / 2.0)
 
         # 2. Open interest
-        avg_oi = sum(o.open_interest or 0 for o in all_relevant) / len(all_relevant) if all_relevant else 0
+        avg_oi = sum(o.open_interest or 0 for o in all_relevant) / len(all_relevant) if all_relevant else 0  # all_relevant already ATM-filtered
         details["avg_open_interest"] = avg_oi
         if avg_oi < self._settings.MIN_OPEN_INTEREST:
             reasons.append(
@@ -90,8 +100,8 @@ class LiquidityEngine:
             codes.append(RejectionReason.POOR_OPTIONS_LIQUIDITY)
         sub_scores.append(min(avg_oi / self._settings.MIN_OPEN_INTEREST, 2.0) / 2.0)
 
-        # 3. Bid-ask spread quality
-        spread_scores = self._evaluate_spreads(front_opts + back_opts, details)
+        # 3. Bid-ask spread quality (ATM-filtered)
+        spread_scores = self._evaluate_spreads(front_atm + back_atm, details)
         if spread_scores["passed"] is False:
             reasons.extend(spread_scores["reasons"])
             codes.append(RejectionReason.WIDE_BID_ASK_SPREADS)
