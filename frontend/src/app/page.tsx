@@ -73,19 +73,13 @@ export default function Dashboard() {
     progress.reset();
     progress.connect();
     try {
-      const result = await api.runScan();
-      setScanResult(result);
-      toast(`Scan complete — ${result.total_recommended} recommended, ${result.total_watchlist} watchlist`, "success");
-      try {
-        const s = await api.dashboardSummary();
-        setSummary(s);
-      } catch {}
+      await api.runScanAsync();
+      // Scan now runs in background; onComplete callback above handles the rest
     } catch (err: any) {
-      setError(err.message || "Scan failed");
-      toast(err.message || "Scan failed", "error");
-    } finally {
       setScanning(false);
       progress.disconnect();
+      setError(err.message || "Scan failed");
+      toast(err.message || "Scan failed", "error");
     }
   }
 
