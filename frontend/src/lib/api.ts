@@ -1,0 +1,250 @@
+const API_BASE = '';
+
+export interface ProviderHealth {
+  provider: string;
+  source_name: string;
+  is_connected: boolean;
+  confidence_score: number;
+  severity: 'HEALTHY' | 'DEGRADED' | 'CRITICAL';
+  error_details: string | null;
+}
+
+export interface HealthResponse {
+  status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL';
+  environment: string;
+  operating_mode: string;
+  timestamp: string;
+  version: string;
+  providers: ProviderHealth[];
+  database_connected: boolean;
+}
+
+export interface EarningsEvent {
+  ticker: string;
+  earnings_date: string;
+  report_timing: string;
+  confidence: string;
+  source: string;
+  source_confidence: number;
+  fiscal_quarter: string | null;
+  fiscal_year: number | null;
+  days_until_earnings: number;
+}
+
+export interface UpcomingEarningsResponse {
+  total: number;
+  window_start: string;
+  window_end: string;
+  earnings: EarningsEvent[];
+}
+
+export interface ScoreBreakdown {
+  factor: string;
+  weight: number;
+  raw_score: number;
+  weighted_score: number;
+  rationale: string;
+}
+
+export interface ScanResult {
+  ticker: string;
+  classification: 'RECOMMEND' | 'WATCHLIST' | 'NO_TRADE';
+  overall_score: number | null;
+  stage_reached: string;
+  rejection_reasons: string[] | null;
+  rationale_summary: string | null;
+  score_breakdown: ScoreBreakdown[] | null;
+  risk_warnings: string[] | null;
+  processing_time_ms: number | null;
+}
+
+export interface ScanRunResponse {
+  run_id: string;
+  status: string;
+  total_scanned: number;
+  total_recommended: number;
+  total_watchlist: number;
+  total_rejected: number;
+  operating_mode: string;
+  scoring_version: string;
+  started_at: string;
+  completed_at: string | null;
+  results: ScanResult[];
+}
+
+export interface TradeLeg {
+  leg_number: number;
+  option_type: 'CALL' | 'PUT';
+  side: 'BUY' | 'SELL';
+  strike: number;
+  expiration: string;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  implied_volatility: number | null;
+  delta: number | null;
+  open_interest: number | null;
+  spread_to_mid: number | null;
+}
+
+export interface RecommendedTrade {
+  ticker: string;
+  spot_price: number;
+  earnings_date: string;
+  earnings_confidence: string;
+  entry_date_start: string;
+  entry_date_end: string;
+  planned_exit_date: string;
+  short_expiry: string;
+  long_expiry: string;
+  lower_strike: number;
+  upper_strike: number;
+  total_debit_mid: number;
+  total_debit_pessimistic: number | null;
+  estimated_max_loss: number;
+  profit_zone_low: number | null;
+  profit_zone_high: number | null;
+  classification: string;
+  overall_score: number;
+  rationale_summary: string | null;
+  key_risks: string[];
+  risk_disclaimer: string;
+  legs: TradeLeg[];
+}
+
+export interface ExplainFactor {
+  factor: string;
+  score: number;
+  weight: number;
+  weighted_contribution: number;
+  explanation: string;
+}
+
+export interface ExplainResponse {
+  ticker: string;
+  classification: string;
+  overall_score: number | null;
+  summary: string;
+  factors: ExplainFactor[];
+  rejection_reasons: string[];
+  risk_warnings: string[];
+  data_quality_notes: string[];
+  recommendation_rationale: string | null;
+}
+
+export interface UniverseTicker {
+  ticker: string;
+  name: string | null;
+  sector: string | null;
+  is_active: boolean;
+}
+
+export interface TopCandidate {
+  ticker: string;
+  score: number;
+  classification: string;
+  scan_run_id: string;
+  scanned_at: string | null;
+}
+
+export interface RecentScan {
+  run_id: string;
+  status: string;
+  total_scanned: number;
+  total_recommended: number;
+  total_watchlist: number;
+  total_rejected: number;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface DashboardSummary {
+  total_scans: number;
+  total_candidates_scanned: number;
+  total_recommendations: number;
+  total_watchlist: number;
+  avg_score: number | null;
+  recent_scans: RecentScan[];
+  top_candidates: TopCandidate[];
+  last_scan_at: string | null;
+}
+
+export interface AuditEntry {
+  id: number;
+  event_type: string;
+  scan_run_id: string | null;
+  ticker: string | null;
+  payload: string | null;
+  created_at: string | null;
+}
+
+export interface AppSettings {
+  operating_mode: string;
+  universe_source: string;
+  scoring: Record<string, number | string>;
+  liquidity: Record<string, number>;
+  earnings_window: Record<string, number | boolean>;
+  universe_tickers: string[];
+}
+
+export interface SchedulerJob {
+  id: string;
+  name: string;
+  next_run: string | null;
+}
+
+export interface SchedulerStatus {
+  running: boolean;
+  jobs: SchedulerJob[];
+}
+
+async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export const api = {
+  health: () => fetchAPI<HealthResponse>('/health'),
+  upcomingEarnings: (days = 30) =>
+    fetchAPI<UpcomingEarningsResponse>(`/api/v1/earnings/upcoming?days_ahead=${days}`),
+  runScan: (tickers?: string[]) =>
+    fetchAPI<ScanRunResponse>('/api/v1/scan/run', {
+      method: 'POST',
+      body: JSON.stringify(tickers ? { tickers } : {}),
+      signal: AbortSignal.timeout(300_000),
+    }),
+  scanResults: () => fetchAPI<{ run_id: string; status: string; total_scanned: number; total_recommended: number; total_watchlist: number; total_rejected: number; started_at: string; completed_at: string | null }[]>('/api/v1/scan/results'),
+  candidate: (ticker: string) => fetchAPI<any>(`/api/v1/candidates/${ticker}`),
+  buildTrade: (ticker: string) =>
+    fetchAPI<RecommendedTrade>('/api/v1/trades/build', {
+      method: 'POST',
+      body: JSON.stringify({ ticker }),
+    }),
+  recommendedTrade: (ticker: string) =>
+    fetchAPI<RecommendedTrade>(`/api/v1/trades/${ticker}/recommended`),
+  explain: (ticker: string) => fetchAPI<ExplainResponse>(`/api/v1/explain/${ticker}`),
+  universe: () => fetchAPI<{ total: number; active: number; tickers: UniverseTicker[] }>('/api/v1/universe'),
+  rejections: () => fetchAPI<{ total: number; scan_run_id: string | null; rejections: { ticker: string; stage: string; reason: string; details: string | null }[] }>('/api/v1/rejections'),
+  dashboardSummary: () => fetchAPI<DashboardSummary>('/api/v1/dashboard/summary'),
+  auditLog: () => fetchAPI<AuditEntry[]>('/api/v1/dashboard/audit'),
+  settings: () => fetchAPI<AppSettings>('/api/v1/settings'),
+  updateSettings: (overrides: Record<string, any>) =>
+    fetchAPI<AppSettings>('/api/v1/settings', {
+      method: 'PUT',
+      body: JSON.stringify(overrides),
+    }),
+  exportScansCSV: () => `${API_BASE}/api/v1/export/scans/csv`,
+  exportCandidatesCSV: (runId?: string) =>
+    `${API_BASE}/api/v1/export/candidates/csv${runId ? `?run_id=${runId}` : ''}`,
+  exportScoresCSV: (runId?: string) =>
+    `${API_BASE}/api/v1/export/scores/csv${runId ? `?run_id=${runId}` : ''}`,
+  schedulerStatus: () => fetchAPI<SchedulerStatus>('/api/v1/settings/scheduler'),
+  triggerScan: () => fetchAPI<{ status: string; message: string }>('/api/v1/settings/scheduler/trigger', { method: 'POST' }),
+};
