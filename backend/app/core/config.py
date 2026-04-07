@@ -120,6 +120,13 @@ class DataSettings(BaseSettings):
     ALLOW_SIMULATION: bool = False
     UNIVERSE_SOURCE: UniverseSource = UniverseSource.STATIC
 
+    @field_validator("UNIVERSE_SOURCE", mode="before")
+    @classmethod
+    def normalise_universe_source(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.upper()
+        return v
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(ENV_FILE), extra="ignore")

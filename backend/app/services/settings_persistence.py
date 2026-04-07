@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 # Maps update request fields → (settings attribute path, category, description)
 SETTING_MAP: dict[str, tuple[str, str, str]] = {
     "operating_mode": ("OPERATING_MODE", "core", "Operating mode: STRICT or GRACEFUL"),
+    "universe_source": ("data.UNIVERSE_SOURCE", "core", "Universe source: STATIC or SP500"),
     "recommend_threshold": ("scoring.RECOMMEND_THRESHOLD", "scoring", "Score threshold for RECOMMEND"),
     "watchlist_threshold": ("scoring.WATCHLIST_THRESHOLD", "scoring", "Score threshold for WATCHLIST"),
     "min_days_to_earnings": ("earnings_window.MIN_DAYS_TO_EARNINGS", "earnings", "Minimum days before earnings"),

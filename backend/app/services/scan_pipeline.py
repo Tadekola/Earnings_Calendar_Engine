@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from app.core.config import Settings
-from app.core.enums import OperatingMode, RecommendationClass, RejectionReason, ScanStage
+from app.core.enums import OperatingMode, RecommendationClass, RejectionReason, ScanStage, UniverseSource
 from app.core.logging import get_logger
 from app.providers.registry import ProviderRegistry
 from app.services.liquidity import LiquidityEngine
@@ -65,7 +65,13 @@ class ScanPipeline:
     ) -> ScanRunResult:
         run_id = str(uuid.uuid4())
         started = datetime.now(timezone.utc)
-        universe = tickers or self._settings.DEFAULT_UNIVERSE
+
+        if tickers:
+            universe = tickers
+        elif self._settings.data.UNIVERSE_SOURCE == UniverseSource.SP500:
+            universe = await self._build_sp500_universe()
+        else:
+            universe = self._settings.DEFAULT_UNIVERSE
 
         logger.info(
             "scan_started",
@@ -133,6 +139,35 @@ class ScanPipeline:
             completed_at=completed,
             results=results,
         )
+
+    async def _build_sp500_universe(self) -> list[str]:
+        """Fetch S&P 500 constituents from FMP, then pre-filter to only tickers
+        with confirmed earnings within the configured earnings window.
+        This avoids running expensive options API calls on all ~500 tickers."""
+        from app.providers.live.fmp import FMPEarningsProvider
+        earnings_provider = self._registry.earnings
+        if not isinstance(earnings_provider, FMPEarningsProvider):
+            logger.warning("sp500_universe_fallback", reason="earnings provider is not FMP, using DEFAULT_UNIVERSE")
+            return self._settings.DEFAULT_UNIVERSE
+
+        logger.info("sp500_universe_fetch_start")
+        sp500_tickers = await earnings_provider.get_sp500_tickers()
+        if not sp500_tickers:
+            logger.warning("sp500_universe_fallback", reason="FMP returned empty S&P 500 list, using DEFAULT_UNIVERSE")
+            return self._settings.DEFAULT_UNIVERSE
+
+        min_days = self._settings.earnings_window.MIN_DAYS_TO_EARNINGS
+        max_days = self._settings.earnings_window.MAX_DAYS_TO_EARNINGS
+        prefiltered = await earnings_provider.get_tickers_with_earnings_in_window(
+            sp500_tickers, min_days, max_days
+        )
+
+        if not prefiltered:
+            logger.warning("sp500_universe_no_earnings", reason="No S&P 500 tickers have earnings in window, using full list")
+            return sp500_tickers
+
+        logger.info("sp500_universe_ready", total=len(prefiltered))
+        return prefiltered
 
     async def _scan_ticker(self, ticker: str) -> TickerScanResult:
         # Stage 1: Earnings Eligibility

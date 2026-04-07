@@ -88,4 +88,13 @@ class UniverseSource(str, Enum):
     STATIC = "STATIC"
     CONFIGURABLE = "CONFIGURABLE"
     SP500_LIQUID = "SP500_LIQUID"
-    SP500 = "sp500"
+    SP500 = "SP500"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "UniverseSource | None":
+        if isinstance(value, str):
+            upper = value.upper()
+            for member in cls:
+                if member.value == upper:
+                    return member
+        return None

@@ -179,6 +179,48 @@ class FMPEarningsProvider(EarningsCalendarProvider):
                 error_details=str(e),
             )
 
+    async def get_sp500_tickers(self) -> list[str]:
+        """Fetch current S&P 500 constituent tickers from FMP."""
+        try:
+            data = await self._request("/sp500-constituent")
+            if not isinstance(data, list):
+                return []
+            return [item["symbol"] for item in data if isinstance(item, dict) and item.get("symbol")]
+        except Exception as e:
+            logger.error("fmp_sp500_fetch_failed", error=str(e))
+            return []
+
+    async def get_tickers_with_earnings_in_window(
+        self, tickers: list[str], min_days: int, max_days: int
+    ) -> list[str]:
+        """Bulk-fetch earnings calendar for the window and return only tickers that have earnings."""
+        today = date.today()
+        window_start = today + timedelta(days=min_days)
+        window_end = today + timedelta(days=max_days)
+        ticker_set = {t.upper() for t in tickers}
+        matched: set[str] = set()
+
+        # Query in 14-day windows to stay under API cap
+        current = window_start
+        while current <= window_end:
+            chunk_end = min(current + timedelta(days=14), window_end)
+            try:
+                data = await self._request(
+                    "/earnings-calendar",
+                    {"from": current.isoformat(), "to": chunk_end.isoformat()},
+                )
+                if isinstance(data, list):
+                    for item in data:
+                        sym = (item.get("symbol") or "").upper()
+                        if sym in ticker_set:
+                            matched.add(sym)
+            except Exception as e:
+                logger.warning("fmp_earnings_window_chunk_failed", window=current.isoformat(), error=str(e))
+            current = chunk_end + timedelta(days=1)
+
+        logger.info("sp500_earnings_prefilter", total_sp500=len(tickers), with_earnings=len(matched))
+        return sorted(matched)
+
     async def close(self) -> None:
         if self._client and not self._client.is_closed:
             await self._client.aclose()

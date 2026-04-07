@@ -270,20 +270,56 @@ export default function SettingsPage() {
 
       {/* Universe */}
       <div className="card">
-        <h2 className="text-lg font-semibold">Active Universe</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Source: {settings.universe_source} | {settings.universe_tickers.length} tickers
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {settings.universe_tickers.map((t) => (
-            <span
-              key={t}
-              className="inline-flex items-center rounded-md bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700"
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Scan Universe</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {(draft.universe_source || settings.universe_source) === "SP500"
+                ? "S&P 500 Auto — fetches all ~500 S&P 500 tickers from FMP and pre-filters to only those with earnings in the configured window (typically 15–30 tickers). Fast and comprehensive."
+                : `Static list — ${settings.universe_tickers.length} manually configured tickers.`}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 flex items-center gap-4">
+          {[
+            { value: "STATIC", label: "Static List (19 tickers)", desc: "Fixed curated universe" },
+            { value: "SP500", label: "S&P 500 Auto", desc: "Pre-filtered by earnings window" },
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              disabled={!editMode}
+              onClick={() => editMode && updateDraft("universe_source", opt.value)}
+              className={`flex-1 rounded-lg border-2 px-4 py-3 text-left text-sm transition ${
+                (draft.universe_source || settings.universe_source) === opt.value
+                  ? "border-brand-600 bg-brand-50 text-brand-700"
+                  : "border-surface-3 text-gray-500"
+              } ${editMode ? "cursor-pointer hover:border-brand-400" : ""}`}
             >
-              {t}
-            </span>
+              <div className="font-semibold">{opt.label}</div>
+              <div className="mt-0.5 text-xs opacity-75">{opt.desc}</div>
+            </button>
           ))}
         </div>
+        {(draft.universe_source || settings.universe_source) === "STATIC" && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {settings.universe_tickers.map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center rounded-md bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+        {(draft.universe_source || settings.universe_source) === "SP500" && (
+          <div className="mt-4 rounded-md bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800">
+            <strong>How it works:</strong> When you run a scan, the engine fetches the current S&P 500 constituent list from FMP,
+            then makes one bulk earnings calendar query to identify which tickers have earnings in the next {settings.earnings_window.min_days_to_earnings}–{settings.earnings_window.max_days_to_earnings} days.
+            Only those tickers (~15–30 at any time) proceed to the full options + scoring pipeline.
+            Scan time stays under 5 minutes.
+          </div>
+        )}
       </div>
 
       {/* Scheduler */}
