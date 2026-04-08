@@ -38,6 +38,7 @@ class ScanResult(Base):
     stage_reached: Mapped[str] = mapped_column(String(50), nullable=False)
     classification: Mapped[str] = mapped_column(String(20), nullable=False)
     overall_score: Mapped[float | None] = mapped_column(Float)
+    strategy_type: Mapped[str | None] = mapped_column(String(50))
     rejection_reasons: Mapped[str | None] = mapped_column(Text)
     rationale_summary: Mapped[str | None] = mapped_column(Text)
     processing_time_ms: Mapped[int | None] = mapped_column(Integer)

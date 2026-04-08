@@ -279,6 +279,11 @@ export default function Dashboard() {
                     >
                       {c.classification}
                     </span>
+                    {c.strategy_type && (
+                      <span className="inline-flex rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 tracking-wide uppercase">
+                        {c.strategy_type.replace('_', ' ')}
+                      </span>
+                    )}
                     <span className="w-10 text-right font-mono text-sm font-bold">
                       {c.score.toFixed(1)}
                     </span>

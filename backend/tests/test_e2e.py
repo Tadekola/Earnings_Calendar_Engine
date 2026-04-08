@@ -102,15 +102,18 @@ async def test_e2e_scored_results_have_breakdown(e2e_client):
     r = await e2e_client.post("/api/v1/scan/run", json={"tickers": ["AAPL"]})
     assert r.status_code == 200
     scan = r.json()
-    result = scan["results"][0]
-
-    if result["classification"] in ("RECOMMEND", "WATCHLIST"):
-        assert result["score_breakdown"] is not None
-        assert len(result["score_breakdown"]) == 7
-        for factor in result["score_breakdown"]:
-            assert "factor" in factor
-            assert "weight" in factor
-            assert "raw_score" in factor
+    for result in scan["results"]:
+        if result["classification"] in ["RECOMMEND", "WATCHLIST"]:
+            assert result["overall_score"] is not None
+            assert result["overall_score"] >= 40.0
+            assert result["score_breakdown"] is not None
+            if result.get("strategy_type") == "DOUBLE_CALENDAR":
+                assert len(result["score_breakdown"]) == 8
+            assert len(result["rationale_summary"]) > 0
+            for factor in result["score_breakdown"]:
+                assert "factor" in factor
+                assert "weight" in factor
+                assert "raw_score" in factor
 
 
 # ── Explain ────────────────────────────────────────────────────────────

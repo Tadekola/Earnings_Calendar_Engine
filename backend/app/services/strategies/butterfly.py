@@ -93,6 +93,34 @@ class ButterflyStrategy(BaseOptionsStrategy):
             rationale=f"ATR to price ratio is {gap_risk*100:.1f}%. High gap risk penalizes butterflies."
         ))
 
+        # Estimate Risk/Reward for the scan pipeline
+        spot = price.close
+        days_to = (earnings.earnings_date - date.today()).days
+        front_iv = vol.front_expiry_iv or 0.25
+        estimated_move = spot * front_iv * (days_to / 365) ** 0.5
+        
+        expirations = sorted(chain.expirations)
+        front_exp = self._select_short_expiry(expirations, earnings.earnings_date)
+        body_strike = self._snap_strike(spot, chain, front_exp)
+        lower_wing = self._snap_strike(spot - estimated_move, chain, front_exp)
+        upper_wing = self._snap_strike(spot + estimated_move, chain, front_exp)
+        
+        legs = self._build_legs(ticker, lower_wing, body_strike, upper_wing, front_exp, chain)
+        total_debit = sum(l.debit for l in legs)
+        net_credit = abs(total_debit) if total_debit < 0 else 0.0
+        spread_width = body_strike - lower_wing
+        max_loss = max(0.0, spread_width - net_credit)
+        reward_to_risk = net_credit / max_loss if max_loss > 0 else 0
+        rr_score = min(100.0, (reward_to_risk / 4.0) * 100.0) 
+
+        factors.append(ScoreFactor(
+            name="Risk/Reward",
+            weight=25.0,
+            raw_score=rr_score,
+            weighted_score=rr_score * 0.25,
+            rationale=f"Reward/Risk is {reward_to_risk:.1f}:1 (Target 4:1 optimal)."
+        ))
+
         overall = sum(f.weighted_score for f in factors)
         classification = RecommendationClass.NO_TRADE
         if overall >= 80:
@@ -169,23 +197,11 @@ class ButterflyStrategy(BaseOptionsStrategy):
         # So reward_to_risk = max_profit / max_loss
         reward_to_risk = max_profit / max_loss if max_loss > 0 else 0
         
-        # Score R/R: Max out at 4.0 (1:4 risk to reward)
-        rr_score = min(100.0, (reward_to_risk / 4.0) * 100.0) 
-
-        # We must re-score to include Risk/Reward now that we have the trade built
+        # We already have Risk/Reward calculated in calculate_score, so we just run it:
         full_liq = self.validate_liquidity(price, chain, front_exp, front_exp)
         base_score = self.calculate_score(ticker, earnings, price, vol, chain, full_liq)
         
-        base_score.factors.append(ScoreFactor(
-            name="Risk/Reward",
-            weight=25.0,
-            raw_score=rr_score,
-            weighted_score=rr_score * 0.25,
-            rationale=f"Reward/Risk is {reward_to_risk:.1f}:1 (Target 4:1 optimal)."
-        ))
-        
-        # Recalculate overall
-        base_score.overall_score = sum(f.weighted_score for f in base_score.factors)
+        # Recalculate overall (should match base_score.overall_score)
         if base_score.overall_score >= 80:
             base_score.classification = RecommendationClass.RECOMMEND
         elif base_score.overall_score >= 65:

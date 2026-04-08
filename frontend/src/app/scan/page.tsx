@@ -156,10 +156,15 @@ export default function ScanResultsPage() {
                       "—"
                     )}
                   </div>
-                  <div className="w-28">
+                  <div className="w-28 flex flex-col gap-1">
                     <span className={classificationBadge(r.classification)}>
                       {r.classification}
                     </span>
+                    {r.strategy_type && (
+                      <span className="inline-flex rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 tracking-wide uppercase w-fit">
+                        {r.strategy_type.replace('_', ' ')}
+                      </span>
+                    )}
                   </div>
                   <div className="flex-1 truncate text-xs text-gray-600">
                     {r.rationale_summary || (r.rejection_reasons || []).join("; ")}

@@ -49,7 +49,7 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
         chain: OptionsChainSnapshot,
         liquidity: LiquidityCheckResult,
     ) -> ScoringResult:
-        return self._scoring.score(
+        scoring_result = self._scoring.score(
             ticker=ticker,
             earnings=earnings,
             price=price,
@@ -57,6 +57,26 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
             chain=chain,
             liquidity=liquidity,
         )
+        
+        # Capital Preservation Bonus for Double Calendars
+        # Max loss is capped at debit, but back-month retains extrinsic value
+        scoring_result.factors.append(
+            ScoreFactor(
+                name="Capital Preservation",
+                weight=10.0,
+                raw_score=100.0,
+                weighted_score=10.0,
+                rationale="Double Calendars retain back-month extrinsic value, limiting true max loss."
+            )
+        )
+        scoring_result.overall_score = min(100.0, sum(f.weighted_score for f in scoring_result.factors))
+        
+        if scoring_result.overall_score >= self._settings.scoring.RECOMMEND_THRESHOLD:
+            scoring_result.classification = RecommendationClass.RECOMMEND
+        elif scoring_result.overall_score >= self._settings.scoring.WATCHLIST_THRESHOLD:
+            scoring_result.classification = RecommendationClass.WATCHLIST
+            
+        return scoring_result
 
     def build_trade_structure(
         self,
@@ -109,19 +129,6 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
 
         full_liq = self.validate_liquidity(price, chain, short_exp, long_exp)
         scoring_result = self.calculate_score(ticker, earnings, price, vol, chain, full_liq)
-
-        # Capital Preservation Bonus for Double Calendars
-        # Max loss is capped at debit, but back-month retains extrinsic value
-        scoring_result.factors.append(
-            ScoreFactor(
-                name="Capital Preservation",
-                weight=10.0,
-                raw_score=100.0,
-                weighted_score=10.0,
-                rationale="Double Calendars retain back-month extrinsic value, limiting true max loss."
-            )
-        )
-        scoring_result.overall_score = min(100.0, sum(f.weighted_score for f in scoring_result.factors))
 
         key_risks = [
             "Earnings date may change — verify before entry",

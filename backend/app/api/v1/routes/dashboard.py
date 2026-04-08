@@ -20,6 +20,7 @@ class TopCandidate(BaseModel):
     score: float
     classification: str
     scan_run_id: str
+    strategy_type: str | None = None
     scanned_at: datetime | None = None
 
 
@@ -97,6 +98,7 @@ async def get_dashboard_summary(
                 score=r.overall_score or 0.0,
                 classification=r.classification,
                 scan_run_id=r.scan_run_id,
+                strategy_type=r.strategy_type,
                 scanned_at=r.created_at,
             )
             for r in top_rows

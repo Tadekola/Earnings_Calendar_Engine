@@ -56,6 +56,7 @@ export interface ScanResult {
   score_breakdown: ScoreBreakdown[] | null;
   risk_warnings: string[] | null;
   processing_time_ms: number | null;
+  strategy_type?: string;
 }
 
 export interface ScanRunResponse {
@@ -145,7 +146,8 @@ export interface TopCandidate {
   score: number;
   classification: string;
   scan_run_id: string;
-  scanned_at: string | null;
+  strategy_type?: string;
+  scanned_at?: string;
 }
 
 export interface RecentScan {

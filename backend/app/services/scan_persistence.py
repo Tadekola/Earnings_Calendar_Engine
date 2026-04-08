@@ -55,6 +55,7 @@ class ScanPersistenceService:
             stage_reached=result.stage_reached.value,
             classification=result.classification.value,
             overall_score=result.overall_score,
+            strategy_type=result.strategy_type,
             rejection_reasons="; ".join(result.rejection_reasons) if result.rejection_reasons else None,
             rationale_summary=result.rationale_summary,
             processing_time_ms=result.processing_time_ms,
