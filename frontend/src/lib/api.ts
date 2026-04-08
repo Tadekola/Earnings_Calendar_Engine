@@ -100,15 +100,16 @@ export interface RecommendedTrade {
   lower_strike: number;
   upper_strike: number;
   total_debit_mid: number;
-  total_debit_pessimistic: number | null;
+  total_debit_pessimistic?: number;
   estimated_max_loss: number;
-  profit_zone_low: number | null;
-  profit_zone_high: number | null;
+  profit_zone_low?: number;
+  profit_zone_high?: number;
   classification: string;
   overall_score: number;
-  rationale_summary: string | null;
+  rationale_summary?: string;
   key_risks: string[];
   risk_disclaimer: string;
+  strategy_type?: string;
   legs: TradeLeg[];
 }
 
@@ -234,9 +235,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ ticker }),
     }),
-  recommendedTrade: (ticker: string) =>
-    fetchAPI<RecommendedTrade>(`/api/v1/trades/${ticker}/recommended`),
-  explain: (ticker: string) => fetchAPI<ExplainResponse>(`/api/v1/explain/${ticker}`),
+  explain: (ticker: string, strategy?: string) => {
+    let url = `/api/v1/explain/${ticker}`;
+    if (strategy) url += `?strategy=${strategy}`;
+    return fetchAPI<ExplainResponse>(url);
+  },
+  recommendedTrade: (ticker: string, strategy?: string) => {
+    let url = `/api/v1/trades/${ticker}/recommended`;
+    if (strategy) url += `?strategy=${strategy}`;
+    return fetchAPI<RecommendedTrade>(url);
+  },
   universe: () => fetchAPI<{ total: number; active: number; tickers: UniverseTicker[] }>('/api/v1/universe'),
   rejections: () => fetchAPI<{ total: number; scan_run_id: string | null; rejections: { ticker: string; stage: string; reason: string; details: string | null }[] }>('/api/v1/rejections'),
   dashboardSummary: () => fetchAPI<DashboardSummary>('/api/v1/dashboard/summary'),

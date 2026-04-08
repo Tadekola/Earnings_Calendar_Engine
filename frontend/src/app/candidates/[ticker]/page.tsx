@@ -24,19 +24,20 @@ export default function CandidateDetailPage() {
   const [trade, setTrade] = useState<RecommendedTrade | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedStrategy, setSelectedStrategy] = useState<string>("DOUBLE_CALENDAR");
 
   useEffect(() => {
     if (!ticker) return;
-    loadData();
-  }, [ticker]);
+    loadData(selectedStrategy);
+  }, [ticker, selectedStrategy]);
 
-  async function loadData() {
+  async function loadData(strategy: string) {
     setLoading(true);
     setError(null);
     try {
       const [explainData, tradeData] = await Promise.allSettled([
-        api.explain(ticker),
-        api.recommendedTrade(ticker),
+        api.explain(ticker, strategy),
+        api.recommendedTrade(ticker, strategy),
       ]);
       if (explainData.status === "fulfilled") setExplain(explainData.value);
       if (tradeData.status === "fulfilled") setTrade(tradeData.value);
@@ -88,12 +89,34 @@ export default function CandidateDetailPage() {
             </>
           )}
         </div>
-        <a
-          href={`/trades?ticker=${ticker}`}
-          className="btn-primary"
-        >
-          View Trade →
-        </a>
+        <div className="flex items-center gap-3">
+          <div className="inline-flex rounded-md shadow-sm" role="group">
+            <button
+              type="button"
+              onClick={() => setSelectedStrategy("DOUBLE_CALENDAR")}
+              className={`px-4 py-2 text-sm font-medium border border-gray-200 rounded-l-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 ${
+                selectedStrategy === "DOUBLE_CALENDAR" ? "bg-blue-50 text-blue-700" : "bg-white text-gray-900"
+              }`}
+            >
+              Double Calendar
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedStrategy("BUTTERFLY")}
+              className={`px-4 py-2 text-sm font-medium border border-gray-200 rounded-r-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 ${
+                selectedStrategy === "BUTTERFLY" ? "bg-blue-50 text-blue-700" : "bg-white text-gray-900"
+              }`}
+            >
+              Iron Butterfly
+            </button>
+          </div>
+          <a
+            href={`/trades?ticker=${ticker}`}
+            className="btn-primary"
+          >
+            View Trade →
+          </a>
+        </div>
       </div>
 
       {/* Recommendation Rationale */}
@@ -176,12 +199,20 @@ export default function CandidateDetailPage() {
               <p className="font-mono font-medium">${trade.upper_strike}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Short Expiry</p>
-              <p className="font-mono text-sm">{trade.short_expiry}</p>
+              <p className="text-xs text-gray-500">Profit Zone</p>
+              <p className="font-mono text-sm text-emerald-600">
+                {trade.profit_zone_low !== undefined && trade.profit_zone_high !== undefined
+                  ? `$${trade.profit_zone_low.toFixed(1)} - $${trade.profit_zone_high.toFixed(1)}`
+                  : "N/A"}
+              </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Long Expiry</p>
-              <p className="font-mono text-sm">{trade.long_expiry}</p>
+              <p className="text-xs text-gray-500">Expirations</p>
+              <p className="font-mono text-sm">
+                {trade.short_expiry === trade.long_expiry
+                  ? trade.short_expiry
+                  : `${trade.short_expiry} / ${trade.long_expiry}`}
+              </p>
             </div>
           </div>
 
