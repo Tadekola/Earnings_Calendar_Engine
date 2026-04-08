@@ -303,8 +303,9 @@ class TradeConstructionEngine:
     def _find_option(
         self, chain: OptionsChainSnapshot, strike: float, exp: date, otype: str
     ) -> OptionRecord | None:
+        otype_lower = otype.lower()
         for o in chain.options:
-            if o.strike == strike and o.expiration == exp and o.option_type == otype:
+            if o.strike == strike and o.expiration == exp and o.option_type.lower() == otype_lower:
                 return o
         return None
 
