@@ -15,11 +15,12 @@
 
 The **Earnings Calendar Engine** is a full-stack quantitative options scanning platform that:
 
-1. **Monitors** a curated universe of 19 high-liquidity U.S. equities for upcoming earnings events
-2. **Scans** each ticker through a multi-stage filtering and scoring pipeline
-3. **Identifies** high-probability pre-earnings Double Calendar spread opportunities
-4. **Builds** the precise 4-leg trade structure with optimal strike and expiration selection
-5. **Explains** every decision with full audit trail and rationale
+1. **Monitors** the S&P 500 universe (or custom watchlists) for upcoming earnings events
+2. **Pre-filters** candidates by price, options activity, and weekly expiration availability
+3. **Scans** each ticker through a multi-stage filtering and scoring pipeline
+4. **Identifies** high-probability pre-earnings Double Calendar spread opportunities
+5. **Builds** the precise 4-leg trade structure with optimal strike and expiration selection
+6. **Explains** every decision with full audit trail and rationale
 
 The platform is built for traders who want to systematically exploit two of the most reliable and repeatable phenomena in options markets:
 
@@ -52,8 +53,14 @@ A Double Calendar spread consists of **4 legs**:
 ### Candidate Selection Flow
 
 ```
-Universe (19 tickers)
+S&P 500 Universe (~500 tickers)
         │
+        ▼
+┌───────────────────────┐
+│  Quality Pre-Filter   │  Price ≥ $100, ≥ 6 future expirations,
+│                       │  weekly options required → drops ~50%
+└───────────────────────┘
+        │ Pass
         ▼
 ┌───────────────────────┐
 │  Earnings Eligibility │  7-21 days to earnings, confirmed date
@@ -66,7 +73,8 @@ Universe (19 tickers)
         │ Pass
         ▼
 ┌───────────────────────┐
-│  Options Liquidity    │  > 500 avg volume, < 5% bid-ask spread
+│  Options Liquidity    │  > 50 avg volume, < 25% bid-ask spread
+│                       │  (Filtered to ATM-adjacent strikes)
 └───────────────────────┘
         │ Pass
         ▼
@@ -108,7 +116,7 @@ RECOMMEND  WATCHLIST   NO_TRADE
 | Layer | Technology |
 |-------|-----------|
 | **Backend API** | FastAPI 0.110, Python 3.12, async/await |
-| **Database** | PostgreSQL 16 (prod), SQLite (dev), SQLAlchemy 2.0 |
+| **Database** | PostgreSQL 16 (Docker), SQLite (local dev/default), SQLAlchemy 2.0 |
 | **Migrations** | Alembic (14 tables) |
 | **Data Providers** | FMP (earnings + prices), Tradier (options chains + Greeks) |
 | **Volatility Engine** | Computed from historical price data (RV10, RV20, RV30, ATR) |
@@ -145,12 +153,12 @@ RECOMMEND  WATCHLIST   NO_TRADE
 Earnings_Calendar_Engine/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/routes/        # 11 route modules (scan, trades, candidates,
+│   │   ├── api/v1/routes/        # 12 route modules (scan, trades, candidates,
 │   │   │                         #   earnings, settings, health, dashboard,
-│   │   │                         #   rejections, export, universe, websocket)
+│   │   │                         #   rejections, export, universe, websocket, explain)
 │   │   ├── core/                 # Config, enums, logging, error handling
 │   │   ├── db/                   # SQLAlchemy async engine + session
-│   │   ├── models/               # 14 DB table models
+│   │   ├── models/               # 8 DB table models
 │   │   ├── providers/
 │   │   │   ├── base.py           # Abstract interfaces + dataclasses
 │   │   │   ├── live/             # FMP (earnings+prices) + Tradier (options)
@@ -162,13 +170,13 @@ Earnings_Calendar_Engine/
 │   │       ├── scoring.py        # 7-factor weighted scoring engine
 │   │       ├── liquidity.py      # Stock + options liquidity evaluation
 │   │       ├── trade_builder.py  # 4-leg double calendar construction
-│   │       └── ...               # 5 more service modules
+│   │       └── ...               # other core service modules
 │   ├── alembic/                  # DB migrations
 │   ├── scripts/                  # live_validation.py + dev utilities
 │   └── tests/                    # 113 pytest tests across 14 files
 ├── frontend/
 │   └── src/
-│       ├── app/                  # 8 Next.js pages
+│       ├── app/                  # 7 Next.js pages
 │       ├── components/           # Toast, Providers, shared UI
 │       └── lib/                  # api.ts client, useScanProgress WebSocket hook
 ├── docker-compose.yml
@@ -198,7 +206,7 @@ Edit `.env` with your API keys:
 
 ```env
 FMP_API_KEY=your_fmp_key_here
-TRADIER_API_KEY=your_tradier_key_here
+TRADIER_ACCESS_TOKEN=your_tradier_key_here
 TRADIER_BASE_URL=https://api.tradier.com/v1
 STRICT_LIVE_DATA=True
 ALLOW_SIMULATION=False
@@ -251,7 +259,9 @@ pytest -v
 | `GET` | `/health` | System health + all provider statuses |
 | `GET` | `/health/live` | Kubernetes liveness probe |
 | `GET` | `/health/ready` | Kubernetes readiness probe |
-| `POST` | `/api/v1/scan/run` | Trigger full universe scan |
+| `POST` | `/api/v1/scan/run` | Trigger full universe scan (synchronous) |
+| `POST` | `/api/v1/scan/run/async` | Trigger async scan (returns run_id immediately) |
+| `GET` | `/api/v1/scan/run/{run_id}` | Poll for async scan results |
 | `GET` | `/api/v1/scan/results` | List all past scan summaries |
 | `GET` | `/api/v1/candidates/{ticker}` | Full candidate detail + score breakdown |
 | `GET` | `/api/v1/trades/{ticker}/recommended` | Recommended double calendar trade |
@@ -287,8 +297,9 @@ pytest -v
 
 ## Universe
 
-The default scan universe consists of 19 high-liquidity, large-cap U.S. equities with active options markets:
+The default scan universe is the **S&P 500** (`UNIVERSE_SOURCE=STATIC`).
 
+For testing or custom runs, a fallback `DEFAULT_UNIVERSE` of 19 high-liquidity U.S. equities is available:
 `SPY` `QQQ` `AAPL` `MSFT` `NVDA` `AMZN` `META` `GOOGL` `TSLA` `AMD` `NFLX` `JPM` `BAC` `XOM` `CVX` `UNH` `COST` `AVGO` `PLTR`
 
 The universe is fully configurable via the Settings page or API.
@@ -300,18 +311,22 @@ The universe is fully configurable via the Settings page or API.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `FMP_API_KEY` | Financial Modeling Prep API key | Required for live mode |
-| `TRADIER_API_KEY` | Tradier brokerage API key | Required for live mode |
+| `TRADIER_ACCESS_TOKEN` | Tradier brokerage API key | Required for live mode |
 | `TRADIER_BASE_URL` | Tradier API base URL | `https://api.tradier.com/v1` |
 | `STRICT_LIVE_DATA` | Reject mock/fallback data | `True` |
 | `ALLOW_SIMULATION` | Allow simulated data in strict mode | `False` |
+| `UNIVERSE_SOURCE` | Source of ticker universe (`STATIC`, `S&P500`, etc) | `STATIC` |
+| `PREFILTER_ENABLED` | Pre-filter universe before options chain fetch | `True` |
+| `PREFILTER_MIN_STOCK_PRICE` | Minimum stock price for pre-filter | `100.0` |
+| `PREFILTER_MIN_EXPIRATION_COUNT`| Minimum future expirations required | `6` |
 | `EARN_MIN_DAYS_TO_EARNINGS` | Minimum days to earnings | `7` |
 | `EARN_MAX_DAYS_TO_EARNINGS` | Maximum days to earnings | `21` |
 | `LIQ_MIN_AVG_STOCK_VOLUME` | Minimum average daily stock volume | `2000000` |
-| `LIQ_MIN_AVG_OPTION_VOLUME` | Minimum average option contract volume | `500` |
-| `LIQ_MAX_BID_ASK_PCT` | Maximum bid-ask spread as % of price | `0.05` |
+| `LIQ_MIN_AVG_OPTION_VOLUME` | Minimum average option contract volume | `50` |
+| `LIQ_MAX_BID_ASK_PCT` | Maximum bid-ask spread as % of price | `0.25` |
 | `SCORING_RECOMMEND_THRESHOLD` | Minimum score for RECOMMEND | `80.0` |
 | `SCORING_WATCHLIST_THRESHOLD` | Minimum score for WATCHLIST | `65.0` |
-| `DATABASE_URL` | SQLAlchemy database URL | SQLite in dev, Postgres in prod |
+| `DATABASE_URL` | SQLAlchemy database URL | SQLite in dev |
 
 ---
 
