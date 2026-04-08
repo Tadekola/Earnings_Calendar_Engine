@@ -406,18 +406,19 @@ class ScanPipeline:
         if not available:
             return None, None
 
-        # Front expiration: closest expiry BEFORE earnings (sell short-dated)
-        # Should expire around or just before earnings for max theta
+        # Front expiration: closest expiry ON or AFTER earnings (sell short-dated)
+        # This captures the elevated IV that will crush after the event
         front_candidates = [
             d for d in available
-            if today < d <= earnings_date and (d - today).days >= 3
+            if d >= earnings_date
         ]
 
-        # Back expiration: first expiry AFTER earnings (buy longer-dated)
-        back_candidates = [
-            d for d in available
-            if d > earnings_date
-        ]
+        # Back expiration: at least 14 days after front expiration (buy longer-dated)
+        min_gap = __import__("datetime").timedelta(days=14)
+        back_candidates = []
+        if front_candidates:
+            front = front_candidates[0]
+            back_candidates = [d for d in available if d >= front + min_gap]
 
         if not front_candidates or not back_candidates:
             # Fallback: if we have at least 2 expirations, use closest pair
@@ -426,9 +427,4 @@ class ScanPipeline:
                 return valid[0], valid[1]
             return None, None
 
-        # Choose the front expiry closest to earnings
-        front = max(front_candidates)
-        # Choose the back expiry closest to earnings (but after)
-        back = min(back_candidates)
-
-        return front, back
+        return front_candidates[0], back_candidates[0]

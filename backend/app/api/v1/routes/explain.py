@@ -22,9 +22,6 @@ async def explain_ticker(request: Request, ticker: str) -> ExplainResponse:
     registry = request.app.state.provider_registry
     settings = request.app.state.settings
 
-    if ticker not in settings.DEFAULT_UNIVERSE:
-        raise_not_found("Ticker", ticker)
-
     earnings_rec = await registry.earnings.get_earnings_date(ticker)
     vol_snap = await registry.volatility.get_volatility_metrics(ticker)
     price_rec = await registry.price.get_current_price(ticker)

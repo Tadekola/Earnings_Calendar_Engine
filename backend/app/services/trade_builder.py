@@ -162,16 +162,21 @@ class TradeConstructionEngine:
         estimated_move = spot * front_iv * (days_to / 365) ** 0.5
 
         # Select strikes
-        lower = override_lower or self._snap_strike(spot - estimated_move * 0.8, chain)
-        upper = override_upper or self._snap_strike(spot + estimated_move * 0.8, chain)
+        lower = override_lower or self._snap_strike(spot - estimated_move * 0.8, chain, short_exp, long_exp)
+        upper = override_upper or self._snap_strike(spot + estimated_move * 0.8, chain, short_exp, long_exp)
 
         # Ensure lower < upper
         if lower >= upper:
-            strikes = sorted({o.strike for o in chain.options})
-            atm_idx = min(range(len(strikes)), key=lambda i: abs(strikes[i] - spot)) if strikes else 0
-            if atm_idx > 0 and atm_idx < len(strikes) - 1:
-                lower = strikes[max(0, atm_idx - 2)]
-                upper = strikes[min(len(strikes) - 1, atm_idx + 2)]
+            short_strikes = {o.strike for o in chain.options if o.expiration == short_exp}
+            long_strikes = {o.strike for o in chain.options if o.expiration == long_exp}
+            valid_strikes = sorted(short_strikes.intersection(long_strikes))
+            if not valid_strikes:
+                valid_strikes = sorted({o.strike for o in chain.options})
+                
+            atm_idx = min(range(len(valid_strikes)), key=lambda i: abs(valid_strikes[i] - spot)) if valid_strikes else 0
+            if atm_idx > 0 and atm_idx < len(valid_strikes) - 1:
+                lower = valid_strikes[max(0, atm_idx - 2)]
+                upper = valid_strikes[min(len(valid_strikes) - 1, atm_idx + 2)]
 
         # Build 4 legs
         legs = self._build_legs(ticker, lower, upper, short_exp, long_exp, chain)
@@ -253,11 +258,19 @@ class TradeConstructionEngine:
             return candidates[0]
         return short_expiry + timedelta(days=28)
 
-    def _snap_strike(self, target: float, chain: OptionsChainSnapshot) -> float:
-        strikes = sorted({o.strike for o in chain.options})
-        if not strikes:
-            return round(target, 0)
-        return min(strikes, key=lambda s: abs(s - target))
+    def _snap_strike(self, target: float, chain: OptionsChainSnapshot, short_exp: date, long_exp: date) -> float:
+        short_strikes = {o.strike for o in chain.options if o.expiration == short_exp}
+        long_strikes = {o.strike for o in chain.options if o.expiration == long_exp}
+        valid_strikes = sorted(short_strikes.intersection(long_strikes))
+        
+        if not valid_strikes:
+            # Fallback to any strike if no overlap
+            strikes = sorted({o.strike for o in chain.options})
+            if not strikes:
+                return round(target, 0)
+            return min(strikes, key=lambda s: abs(s - target))
+            
+        return min(valid_strikes, key=lambda s: abs(s - target))
 
     def _build_legs(
         self,
