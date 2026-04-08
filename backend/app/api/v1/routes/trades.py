@@ -58,17 +58,25 @@ def _to_response(trade: ConstructedTrade) -> RecommendedTradeResponse:
         rationale_summary=trade.rationale_summary,
         key_risks=trade.key_risks,
         risk_disclaimer=trade.risk_disclaimer,
+        strategy_type=trade.strategy_type,
         legs=legs,
     )
 
 
 @router.get("/{ticker}/recommended", response_model=RecommendedTradeResponse)
-async def get_recommended_trade(request: Request, ticker: str) -> RecommendedTradeResponse:
+async def get_recommended_trade(request: Request, ticker: str, strategy: str | None = None) -> RecommendedTradeResponse:
     ticker = ticker.upper()
     settings = request.app.state.settings
     registry = request.app.state.provider_registry
 
     engine = TradeConstructionEngine(settings, registry)
+    if strategy:
+        from app.services.base_strategy import StrategyFactory
+        strategies = StrategyFactory(settings, registry).get_active_strategies()
+        selected_strat = next((s for s in strategies if s.strategy_type.upper() == strategy.upper()), None)
+        if selected_strat:
+            engine._strategy = selected_strat
+
     try:
         trade = await engine.build_recommended(ticker)
     except ValueError as e:

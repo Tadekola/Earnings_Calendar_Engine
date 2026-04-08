@@ -48,6 +48,7 @@ class RecommendedTradeResponse(BaseModel):
     rationale_summary: str | None = None
     key_risks: list[str] = []
     risk_disclaimer: str
+    strategy_type: str = "DOUBLE_CALENDAR"
     legs: list[TradeLegResponse] = []
 
 

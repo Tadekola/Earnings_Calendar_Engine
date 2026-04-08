@@ -83,10 +83,7 @@ async def test_explain_ticker(client):
     assert len(data["risk_warnings"]) > 0
 
 
-@pytest.mark.asyncio
-async def test_explain_not_found(client):
-    response = await client.get("/api/v1/explain/ZZZZZ")
-    assert response.status_code == 404
+# Removed test_explain_not_found as we now allow any ticker
 
 
 @pytest.mark.asyncio

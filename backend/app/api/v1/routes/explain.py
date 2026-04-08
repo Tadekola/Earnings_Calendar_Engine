@@ -17,7 +17,7 @@ router = APIRouter(tags=["explain"])
 
 
 @router.get("/explain/{ticker}", response_model=ExplainResponse)
-async def explain_ticker(request: Request, ticker: str) -> ExplainResponse:
+async def explain_ticker(request: Request, ticker: str, strategy: str | None = None) -> ExplainResponse:
     ticker = ticker.upper()
     registry = request.app.state.provider_registry
     settings = request.app.state.settings
@@ -46,26 +46,34 @@ async def explain_ticker(request: Request, ticker: str) -> ExplainResponse:
             recommendation_rationale=f"{ticker} has no upcoming earnings date.",
         )
 
-    # Run real scoring engine
-    liq_engine = LiquidityEngine(settings.liquidity)
-    scoring_engine = ScoringEngine(settings.scoring, settings.earnings_window)
-
-    if price_rec and chain.expirations:
+    # Run real scoring engine via the requested strategy or default Double Calendar
+    from app.services.base_strategy import StrategyFactory
+    factory = StrategyFactory(settings, registry)
+    active_strats = factory.get_active_strategies()
+    strat = next((s for s in active_strats if s.strategy_type.upper() == strategy.upper()), active_strats[0]) if strategy else active_strats[0]
+    
+    # Since explain doesn't build the trade, we have to determine expirations
+    # Let's temporarily build the trade to get expirations and full evaluation
+    try:
+        trade = strat.build_trade_structure(ticker, earnings_rec, price_rec or _default_price(ticker), vol_snap, chain)
+        front_exp = trade.short_expiry
+        long_exp = trade.long_expiry
+    except Exception:
+        # Fallback expirations
         from app.services.scan_pipeline import ScanPipeline
         pipeline = ScanPipeline(settings, registry)
-        front_exp, back_exp = pipeline._select_expirations(chain, earnings_rec,
-            (earnings_rec.earnings_date - __import__("datetime").date.today()).days)
-        if front_exp and back_exp:
-            full_liq = liq_engine.evaluate_full(price_rec, chain, front_exp, back_exp)
-        else:
-            full_liq = liq_engine.evaluate_stock_liquidity(price_rec)
+        front_exp, long_exp = pipeline._select_expirations(chain, earnings_rec, (earnings_rec.earnings_date - __import__("datetime").date.today()).days)
+
+    liq_engine = LiquidityEngine(settings.liquidity)
+    if price_rec and chain.expirations and front_exp and long_exp:
+        full_liq = strat.validate_liquidity(price_rec, chain, front_exp, long_exp)
     elif price_rec:
         full_liq = liq_engine.evaluate_stock_liquidity(price_rec)
     else:
         from app.services.liquidity import LiquidityCheckResult
         full_liq = LiquidityCheckResult(passed=False, score=0.0, rejection_reasons=["No price data"])
 
-    scoring_result = scoring_engine.score(
+    scoring_result = strat.calculate_score(
         ticker=ticker,
         earnings=earnings_rec,
         price=price_rec or _default_price(ticker),

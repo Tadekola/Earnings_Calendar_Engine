@@ -11,6 +11,7 @@ from app.core.config import Settings
 from app.core.enums import OperatingMode, RecommendationClass, RejectionReason, ScanStage, UniverseSource
 from app.core.logging import get_logger
 from app.providers.registry import ProviderRegistry
+from app.services.base_strategy import StrategyFactory
 from app.services.liquidity import LiquidityEngine
 from app.services.scoring import ScoringEngine, ScoringResult
 
@@ -30,6 +31,7 @@ class TickerScanResult:
     rejection_codes: list[RejectionReason] = field(default_factory=list)
     rationale_summary: str = ""
     processing_time_ms: int = 0
+    strategy_type: str | None = None
 
 
 @dataclass
@@ -48,15 +50,12 @@ class ScanRunResult:
 
 
 class ScanPipeline:
-    def __init__(
-        self,
-        settings: Settings,
-        registry: ProviderRegistry,
-    ) -> None:
+    def __init__(self, settings: Settings, registry: ProviderRegistry) -> None:
         self._settings = settings
         self._registry = registry
         self._liquidity_engine = LiquidityEngine(settings.liquidity)
         self._scoring_engine = ScoringEngine(settings.scoring, settings.earnings_window)
+        self._strategy = StrategyFactory(settings, registry).get_active_strategies()[0]
 
     async def run(
         self,
@@ -325,23 +324,81 @@ class ScanPipeline:
         # Stage 5: Full liquidity composite
         full_liq = self._liquidity_engine.evaluate_full(price, chain, front_exp, back_exp)
 
-        # Stage 6: Scoring
-        scoring_result = self._scoring_engine.score(
+        # Stage 6: Strategy Selection and Scoring
+        # The Regime Filter (Phase 4)
+        active_strategies = StrategyFactory(self._settings, self._registry).get_active_strategies()
+        best_result = None
+        best_strategy = None
+        
+        # Compute base regime flags
+        front_iv = vol.front_expiry_iv or 0.0
+        back_iv = vol.back_expiry_iv or 0.0
+        ivp = vol.iv_percentile or 0.0
+        
+        in_backwardation = (front_iv > back_iv * 1.10)  # > 10%
+        high_absolute_iv = (ivp > 0.8) # proxy for 52-wk high
+
+        for strategy in active_strategies:
+            # We must re-evaluate liquidity per-strategy (since expirations differ)
+            if strategy.strategy_type == "DOUBLE_CALENDAR":
+                strat_front, strat_back = front_exp, back_exp
+            else: # BUTTERFLY
+                strat_front, strat_back = front_exp, front_exp
+                
+            strat_liq = self._liquidity_engine.evaluate_full(price, chain, strat_front, strat_back)
+            
+            strat_score = strategy.calculate_score(
+                ticker=ticker,
+                earnings=earnings,
+                price=price,
+                vol=vol,
+                chain=chain,
+                liquidity=strat_liq,
+            )
+            
+            # Apply Regime Bonus
+            bonus_rationale = ""
+            if strategy.strategy_type == "DOUBLE_CALENDAR" and in_backwardation:
+                bonus = 10.0
+                strat_score.overall_score = min(100.0, strat_score.overall_score + bonus)
+                bonus_rationale = " (Bonus applied: +10 for IV Backwardation regime)"
+            elif strategy.strategy_type == "BUTTERFLY" and high_absolute_iv:
+                bonus = 10.0
+                strat_score.overall_score = min(100.0, strat_score.overall_score + bonus)
+                bonus_rationale = " (Bonus applied: +10 for High Absolute IV regime)"
+                
+            if bonus_rationale:
+                strat_score.rationale_summary += bonus_rationale
+
+            if best_result is None or strat_score.overall_score > best_result.overall_score:
+                best_result = strat_score
+                best_strategy = strategy.strategy_type
+
+        # Re-classify based on final boosted score
+        if best_result.overall_score >= self._settings.scoring.RECOMMEND_THRESHOLD:
+            best_result.classification = RecommendationClass.RECOMMEND
+        elif best_result.overall_score >= self._settings.scoring.WATCHLIST_THRESHOLD:
+            best_result.classification = RecommendationClass.WATCHLIST
+        else:
+            best_result.classification = RecommendationClass.NO_TRADE
+
+        logger.info(
+            "ticker_scanned",
             ticker=ticker,
-            earnings=earnings,
-            price=price,
-            vol=vol,
-            chain=chain,
-            liquidity=full_liq,
+            classification=best_result.classification,
+            score=best_result.overall_score,
+            strategy=best_strategy,
+            rationale=best_result.rationale_summary,
         )
 
         return TickerScanResult(
             ticker=ticker,
-            classification=scoring_result.classification,
+            classification=best_result.classification,
             stage_reached=ScanStage.SCORING,
-            overall_score=scoring_result.overall_score,
-            scoring_result=scoring_result,
-            rationale_summary=scoring_result.rationale_summary,
+            overall_score=best_result.overall_score,
+            scoring_result=best_result,
+            rationale_summary=best_result.rationale_summary,
+            strategy_type=best_strategy,
         )
 
     async def _check_earnings(self, ticker: str) -> TickerScanResult | None:

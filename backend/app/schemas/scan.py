@@ -30,6 +30,7 @@ class ScanResultResponse(BaseModel):
     score_breakdown: list[ScoreBreakdown] | None = None
     risk_warnings: list[str] | None = None
     processing_time_ms: int | None = None
+    strategy_type: str | None = None
 
 
 class ScanRunResponse(BaseModel):
