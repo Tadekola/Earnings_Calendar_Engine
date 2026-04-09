@@ -135,31 +135,31 @@ export default function CandidateDetailPage() {
           <div className="space-y-3">
             {explain.factors.map((f) => (
               <div key={f.factor}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium text-gray-700">{f.factor}</span>
-                  <div className="flex items-center gap-3">
-                    <span className={`font-mono text-sm ${scoreColor(f.score)}`}>
-                      {f.score.toFixed(0)}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    {f.factor}
+                  </span>
+                  <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-300">
+                    <span className={`font-semibold ${scoreColor(f.score)}`}>
+                      {Math.round(f.score)}
                     </span>
-                    <span className="text-xs text-gray-400">w{f.weight.toFixed(0)}</span>
-                    <span className="font-mono text-xs text-gray-500">
-                      +{f.weighted_contribution.toFixed(1)}
-                    </span>
+                    <span>w{f.weight}</span>
+                    <span>+{f.weighted_contribution.toFixed(1)}</span>
                   </div>
                 </div>
-                <div className="h-2 rounded-full bg-surface-2">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-surface-3 dark:bg-gray-200/20">
                   <div
-                    className={`h-2 rounded-full transition-all ${
+                    className={`h-full ${
                       f.score >= 70
                         ? "bg-emerald-500"
                         : f.score >= 40
                         ? "bg-amber-500"
                         : "bg-red-400"
                     }`}
-                    style={{ width: `${f.score}%` }}
+                    style={{ width: `${Math.max(0, Math.min(100, f.score))}%` }}
                   />
                 </div>
-                <p className="mt-1 text-xs text-gray-500">{f.explanation}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-300">{f.explanation}</p>
               </div>
             ))}
           </div>
