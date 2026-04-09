@@ -9,11 +9,16 @@ from typing import Any
 
 from app.core.config import Settings
 from app.core.enums import OperatingMode, RecommendationClass, RejectionReason, ScanStage, UniverseSource
-from app.core.logging import get_logger
-from app.providers.registry import ProviderRegistry
+from app.schemas.scan import (
+    ScanResultResponse,
+    ScanRunResponse,
+)
 from app.services.base_strategy import StrategyFactory
 from app.services.liquidity import LiquidityEngine
-from app.services.scoring import ScoringEngine, ScoringResult
+from app.services.scoring import ScoringEngine, ScoreFactor
+from app.services.trade_builder import TradeConstructionEngine
+from app.providers.registry import ProviderRegistry
+from app.core.logging import get_logger
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -360,12 +365,26 @@ class ScanPipeline:
             bonus_rationale = ""
             if strategy.strategy_type == "DOUBLE_CALENDAR" and in_backwardation:
                 bonus = 10.0
+                strat_score.factors.append(ScoreFactor(
+                    name="Regime Filter",
+                    weight=10.0,
+                    raw_score=100.0,
+                    weighted_score=bonus,
+                    rationale="IV Backwardation regime detected. +10 bonus for Double Calendar."
+                ))
                 strat_score.overall_score = min(100.0, strat_score.overall_score + bonus)
-                bonus_rationale = " (Bonus applied: +10 for IV Backwardation regime)"
+                bonus_rationale = " (+10 bonus for IV Backwardation regime)"
             elif strategy.strategy_type == "BUTTERFLY" and high_absolute_iv:
                 bonus = 10.0
+                strat_score.factors.append(ScoreFactor(
+                    name="Regime Filter",
+                    weight=10.0,
+                    raw_score=100.0,
+                    weighted_score=bonus,
+                    rationale="High Absolute IV regime detected. +10 bonus for Butterfly."
+                ))
                 strat_score.overall_score = min(100.0, strat_score.overall_score + bonus)
-                bonus_rationale = " (Bonus applied: +10 for High Absolute IV regime)"
+                bonus_rationale = " (+10 bonus for High Absolute IV regime)"
                 
             if bonus_rationale:
                 strat_score.rationale_summary += bonus_rationale
