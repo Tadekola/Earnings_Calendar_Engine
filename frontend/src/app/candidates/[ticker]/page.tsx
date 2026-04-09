@@ -122,7 +122,7 @@ export default function CandidateDetailPage() {
       {/* Recommendation Rationale */}
       {explain?.recommendation_rationale && (
         <div className="card">
-          <p className="text-sm text-gray-700 leading-relaxed">
+          <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
             {explain.recommendation_rationale}
           </p>
         </div>
