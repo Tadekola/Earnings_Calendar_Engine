@@ -85,7 +85,6 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
                     rationale="IV Backwardation regime detected. +10 bonus for Double Calendar."
                 )
             )
-            scoring_result.rationale_summary += " (+10 bonus for IV Backwardation regime)"
 
         scoring_result.overall_score = min(100.0, sum(f.weighted_score for f in scoring_result.factors))
         
@@ -93,6 +92,19 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
             scoring_result.classification = RecommendationClass.RECOMMEND
         elif scoring_result.overall_score >= self._settings.scoring.WATCHLIST_THRESHOLD:
             scoring_result.classification = RecommendationClass.WATCHLIST
+
+        days_to = (earnings.earnings_date - __import__("datetime").date.today()).days
+        scoring_result.rationale_summary = self._scoring._build_rationale(
+            ticker, 
+            scoring_result.overall_score, 
+            scoring_result.classification, 
+            scoring_result.factors, 
+            days_to, 
+            earnings
+        )
+        
+        if in_backwardation:
+            scoring_result.rationale_summary += " (+10 bonus for IV Backwardation regime)"
             
         return scoring_result
 
