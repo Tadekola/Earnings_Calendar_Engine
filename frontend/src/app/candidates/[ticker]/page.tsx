@@ -171,47 +171,43 @@ export default function CandidateDetailPage() {
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Recommended Trade</h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div className="rounded-md bg-surface-1 p-3">
-              <p className="text-xs text-gray-500">Spot Price</p>
+            <div className="rounded-md bg-surface-1 dark:bg-gray-700/50 p-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Spot Price</p>
               <p className="text-lg font-semibold">${trade.spot_price.toFixed(2)}</p>
             </div>
-            <div className="rounded-md bg-surface-1 p-3">
-              <p className="text-xs text-gray-500">Total Debit</p>
+            <div className="rounded-md bg-surface-1 dark:bg-gray-700/50 p-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Total Debit</p>
               <p className="text-lg font-semibold">${trade.total_debit_mid.toFixed(2)}</p>
             </div>
-            <div className="rounded-md bg-surface-1 p-3">
-              <p className="text-xs text-gray-500">Max Loss</p>
-              <p className="text-lg font-semibold text-red-600">${trade.estimated_max_loss.toFixed(2)}</p>
+            <div className="rounded-md bg-surface-1 dark:bg-gray-700/50 p-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Max Loss</p>
+              <p className="text-lg font-semibold text-red-600 dark:text-red-400">${trade.estimated_max_loss.toFixed(2)}</p>
             </div>
-            <div className="rounded-md bg-surface-1 p-3">
-              <p className="text-xs text-gray-500">Earnings</p>
+            <div className="rounded-md bg-surface-1 dark:bg-gray-700/50 p-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Earnings</p>
               <p className="text-lg font-semibold">{trade.earnings_date}</p>
             </div>
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
-              <p className="text-xs text-gray-500">Lower Strike</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Lower Strike</p>
               <p className="font-mono font-medium">${trade.lower_strike}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Upper Strike</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Upper Strike</p>
               <p className="font-mono font-medium">${trade.upper_strike}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Profit Zone</p>
-              <p className="font-mono text-sm text-emerald-600">
-                {trade.profit_zone_low !== undefined && trade.profit_zone_high !== undefined
-                  ? `$${trade.profit_zone_low.toFixed(1)} - $${trade.profit_zone_high.toFixed(1)}`
-                  : "N/A"}
+              <p className="text-xs text-gray-500 dark:text-gray-400">Profit Zone</p>
+              <p className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                ${trade.profit_zone_low.toFixed(1)} - ${trade.profit_zone_high.toFixed(1)}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Expirations</p>
-              <p className="font-mono text-sm">
-                {trade.short_expiry === trade.long_expiry
-                  ? trade.short_expiry
-                  : `${trade.short_expiry} / ${trade.long_expiry}`}
+              <p className="text-xs text-gray-500 dark:text-gray-400">Expirations</p>
+              <p className="font-mono font-medium">
+                {trade.short_expiry} / {trade.long_expiry}
               </p>
             </div>
           </div>
