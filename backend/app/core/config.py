@@ -84,11 +84,12 @@ class ScoringSettings(BaseSettings):
     PRICING_EFFICIENCY_WEIGHT: float = 10.0
     EVENT_CLEANLINESS_WEIGHT: float = 10.0
     HISTORICAL_FIT_WEIGHT: float = 5.0
+    IV_HV_GAP_WEIGHT: float = 10.0
 
     RECOMMEND_THRESHOLD: float = 80.0
     WATCHLIST_THRESHOLD: float = 65.0
 
-    SCORING_VERSION: str = "1.0.0"
+    SCORING_VERSION: str = "1.1.0"
 
 
 class LiquiditySettings(BaseSettings):

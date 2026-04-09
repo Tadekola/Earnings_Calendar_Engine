@@ -108,7 +108,7 @@ async def test_e2e_scored_results_have_breakdown(e2e_client):
             assert result["overall_score"] >= 40.0
             assert result["score_breakdown"] is not None
             if result.get("strategy_type") == "DOUBLE_CALENDAR":
-                assert len(result["score_breakdown"]) == 8
+                assert len(result["score_breakdown"]) == 9
             assert len(result["rationale_summary"]) > 0
             for factor in result["score_breakdown"]:
                 assert "factor" in factor

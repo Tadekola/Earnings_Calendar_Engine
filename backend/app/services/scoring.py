@@ -53,6 +53,7 @@ class ScoringEngine:
             + scoring_settings.PRICING_EFFICIENCY_WEIGHT
             + scoring_settings.EVENT_CLEANLINESS_WEIGHT
             + scoring_settings.HISTORICAL_FIT_WEIGHT
+            + scoring_settings.IV_HV_GAP_WEIGHT
         )
 
     def score(
@@ -88,6 +89,9 @@ class ScoringEngine:
 
         # 7. Historical Fit (weight: 5)
         factors.append(self._score_historical_fit(vol, price))
+
+        # 8. IV vs HV Gap (weight: 10)
+        factors.append(self._score_iv_hv_gap(vol))
 
         # Compute overall
         overall = sum(f.weighted_score for f in factors)
@@ -366,6 +370,64 @@ class ScoringEngine:
             "Historical Fit", self._scoring.HISTORICAL_FIT_WEIGHT, score, rationale
         )
 
+    # --- Factor 8: IV vs HV Gap ---
+    def _score_iv_hv_gap(self, vol: VolatilitySnapshot) -> ScoreFactor:
+        """Compare implied volatility to historical (realized) volatility.
+
+        IV << HV → options are cheap relative to actual movement → BUY signal.
+        IV >> HV → options are expensive, IV crush likely → caution signal.
+        """
+        score = 50.0  # neutral baseline
+        rationale_parts = []
+
+        iv = vol.front_expiry_iv
+        hv = vol.realized_vol_30d or vol.realized_vol_20d
+
+        if iv is not None and hv is not None and hv > 0:
+            ratio = iv / hv
+
+            if ratio < 0.80:
+                # IV significantly below HV — options are cheap, strong buy
+                score = 95.0
+                rationale_parts.append(
+                    f"IV/HV ratio {ratio:.2f} — options are cheap vs realized movement. Strong buy signal."
+                )
+            elif ratio < 0.95:
+                # IV moderately below HV — favorable
+                score = 80.0
+                rationale_parts.append(
+                    f"IV/HV ratio {ratio:.2f} — IV slightly below realized vol. Favorable."
+                )
+            elif ratio <= 1.10:
+                # IV roughly equal to HV — fair value
+                score = 60.0
+                rationale_parts.append(
+                    f"IV/HV ratio {ratio:.2f} — options fairly priced vs historical movement."
+                )
+            elif ratio <= 1.30:
+                # IV moderately above HV — getting expensive
+                score = 35.0
+                rationale_parts.append(
+                    f"IV/HV ratio {ratio:.2f} — IV elevated vs realized. IV crush risk."
+                )
+            else:
+                # IV significantly above HV — expensive, high crush risk
+                score = 15.0
+                rationale_parts.append(
+                    f"IV/HV ratio {ratio:.2f} — options expensive vs movement. High IV crush risk."
+                )
+        elif iv is not None:
+            score = 45.0
+            rationale_parts.append("No realized vol data to compare against IV.")
+        else:
+            score = 40.0
+            rationale_parts.append("Insufficient volatility data for IV/HV comparison.")
+
+        rationale = "; ".join(rationale_parts) if rationale_parts else "No IV/HV data available."
+        return self._make_factor(
+            "IV/HV Gap", self._scoring.IV_HV_GAP_WEIGHT, score, rationale
+        )
+
     def _generate_warnings(
         self,
         earnings: EarningsRecord,
@@ -390,6 +452,17 @@ class ScoringEngine:
 
         if vol.term_structure_slope is not None and vol.term_structure_slope > 0.05:
             warnings.append("Contango term structure — calendars may underperform.")
+
+        # IV vs HV warning
+        iv = vol.front_expiry_iv
+        hv = vol.realized_vol_30d or vol.realized_vol_20d
+        if iv is not None and hv is not None and hv > 0:
+            ratio = iv / hv
+            if ratio > 1.30:
+                warnings.append(
+                    f"IV/HV ratio is {ratio:.2f} — implied vol far exceeds realized movement. "
+                    f"High IV crush risk on calendars."
+                )
 
         warnings.append(
             "This is a decision-support tool only. Options involve risk of total loss. "

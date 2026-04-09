@@ -2,7 +2,7 @@
 
 > **An institutional-grade, fully automated Pre-Earnings Double Calendar Scanner and Trade Builder for liquid U.S. equities.**
 
-[![Tests](https://img.shields.io/badge/tests-113%20passing-brightgreen)](./backend/tests)
+[![Tests](https://img.shields.io/badge/tests-117%20passing-brightgreen)](./backend/tests)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://www.python.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688)](https://fastapi.tiangolo.com/)
@@ -95,7 +95,7 @@ RECOMMEND  WATCHLIST   NO_TRADE
 
 ---
 
-## Scoring Model (v1.0.0)
+## Scoring Model (v1.1.0)
 
 | Factor | Weight | What It Measures |
 |--------|--------|-----------------|
@@ -106,6 +106,9 @@ RECOMMEND  WATCHLIST   NO_TRADE
 | **Pricing Efficiency** | 10% | IV relative to historical realized volatility |
 | **Event Cleanliness** | 10% | Confirmed earnings date, no conflicting events |
 | **Historical Fit** | 5% | Post-earnings price behaviour patterns |
+| **IV vs HV Gap** | 10% | Compares front-month implied vol to historical 30-day realized vol |
+
+*(Note: For Double Calendars, a Capital Preservation factor is dynamically added)*
 
 **Classification Thresholds:** `≥80` → RECOMMEND | `≥65` → WATCHLIST | `<65` → NO_TRADE
 
@@ -124,7 +127,7 @@ RECOMMEND  WATCHLIST   NO_TRADE
 | **Frontend** | Next.js 14, TypeScript, Tailwind CSS |
 | **Real-time** | WebSocket scan progress streaming |
 | **Logging** | structlog (structured JSON), full audit trail |
-| **Testing** | pytest, pytest-asyncio (113 tests) |
+| **Testing** | pytest, pytest-asyncio (117 tests) |
 | **Infra** | Docker Compose, GitHub Actions CI |
 
 ---
@@ -133,7 +136,7 @@ RECOMMEND  WATCHLIST   NO_TRADE
 
 - **Live Data Providers** — FMP (`/stable` endpoints) for earnings & prices, Tradier for options chains with full Greeks
 - **Multi-stage Scan Pipeline** — Earnings eligibility → Stock liquidity → Options liquidity → Volatility → Scoring → Trade construction
-- **7-Factor Scoring Engine** — Weighted model producing 0-100 composite score with full factor-level breakdown
+- **8-Factor Scoring Engine** — Weighted model producing 0-100 composite score with full factor-level breakdown
 - **4-Leg Trade Builder** — Automatic optimal strike and expiration selection for double calendar construction
 - **Full Explainability** — Every recommendation includes factor-by-factor rationale, rejection reasons, and audit logs
 - **Real-time Progress** — WebSocket streaming of scan progress with per-ticker classification
@@ -167,13 +170,13 @@ Earnings_Calendar_Engine/
 │   │   ├── schemas/              # Pydantic request/response models
 │   │   └── services/
 │   │       ├── scan_pipeline.py  # Multi-stage scan orchestration
-│   │       ├── scoring.py        # 7-factor weighted scoring engine
+│   │       ├── scoring.py        # 8-factor weighted scoring engine
 │   │       ├── liquidity.py      # Stock + options liquidity evaluation
 │   │       ├── trade_builder.py  # 4-leg double calendar construction
 │   │       └── ...               # other core service modules
 │   ├── alembic/                  # DB migrations
 │   ├── scripts/                  # live_validation.py + dev utilities
-│   └── tests/                    # 113 pytest tests across 14 files
+│   └── tests/                    # 117 pytest tests across 14 files
 ├── frontend/
 │   └── src/
 │       ├── app/                  # 7 Next.js pages
@@ -247,7 +250,7 @@ npm run dev   # runs on http://localhost:3001
 ```bash
 cd backend
 pytest -v
-# Expected: 113 passed
+# Expected: 117 passed
 ```
 
 ---
@@ -354,7 +357,7 @@ Complete history of every scan, setting change, and data fetch with timestamps.
 GitHub Actions pipeline runs on every push to `main`:
 - Lint (ruff)
 - Type check (mypy)
-- Full test suite (113 tests)
+- Full test suite (117 tests)
 - Docker build validation
 
 ---
@@ -364,7 +367,7 @@ GitHub Actions pipeline runs on every push to `main`:
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Make your changes with tests
-4. Run `pytest -v` — all 113 tests must pass
+4. Run `pytest -v` — all 117 tests must pass
 5. Submit a Pull Request
 
 ---

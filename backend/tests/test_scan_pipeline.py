@@ -51,9 +51,9 @@ async def test_scored_results_have_factors(pipeline):
         if r.stage_reached == ScanStage.SCORING:
             assert r.scoring_result is not None
             if r.strategy_type == "DOUBLE_CALENDAR":
-                assert len(r.scoring_result.factors) == 8
+                assert len(r.scoring_result.factors) == 9
             else:
-                assert len(r.scoring_result.factors) == 7
+                assert len(r.scoring_result.factors) == 8
             assert r.overall_score is not None
             assert r.overall_score > 0
 

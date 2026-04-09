@@ -100,7 +100,7 @@ def good_liquidity():
 
 def test_score_returns_all_factors(engine, good_earnings, good_price, good_vol, good_chain, good_liquidity):
     result = engine.score("AAPL", good_earnings, good_price, good_vol, good_chain, good_liquidity)
-    assert len(result.factors) == 7
+    assert len(result.factors) == 8
     factor_names = {f.name for f in result.factors}
     assert "Liquidity Quality" in factor_names
     assert "Earnings Timing" in factor_names
@@ -109,6 +109,7 @@ def test_score_returns_all_factors(engine, good_earnings, good_price, good_vol, 
     assert "Pricing Efficiency" in factor_names
     assert "Event Cleanliness" in factor_names
     assert "Historical Fit" in factor_names
+    assert "IV/HV Gap" in factor_names
 
 
 def test_score_range(engine, good_earnings, good_price, good_vol, good_chain, good_liquidity):
@@ -173,3 +174,43 @@ def test_poor_liquidity_lowers_score(engine, good_earnings, good_price, good_vol
     result_good = engine.score("TEST", good_earnings, good_price, good_vol, good_chain, good_liq)
     result_poor = engine.score("TEST", good_earnings, good_price, good_vol, good_chain, poor_liq)
     assert result_good.overall_score > result_poor.overall_score
+
+
+def test_iv_hv_gap_cheap_iv_scores_high(engine, good_earnings, good_price, good_chain, good_liquidity):
+    """When IV is well below HV, the IV/HV Gap factor should score high (options are cheap)."""
+    cheap_vol = VolatilitySnapshot(
+        ticker="TEST",
+        as_of_date=date.today(),
+        realized_vol_10d=0.30,
+        realized_vol_20d=0.30,
+        realized_vol_30d=0.35,
+        front_expiry_iv=0.25,  # IV/HV = 0.71 → cheap
+        back_expiry_iv=0.22,
+        term_structure_slope=-0.05,
+        iv_rank=40.0,
+        meta=ProviderMeta(source_name="mock", confidence_score=1.0),
+    )
+    result = engine.score("TEST", good_earnings, good_price, cheap_vol, good_chain, good_liquidity)
+    gap_factor = next(f for f in result.factors if f.name == "IV/HV Gap")
+    assert gap_factor.raw_score >= 90.0
+
+
+def test_iv_hv_gap_expensive_iv_scores_low(engine, good_earnings, good_price, good_chain, good_liquidity):
+    """When IV far exceeds HV, the IV/HV Gap factor should score low (options expensive)."""
+    expensive_vol = VolatilitySnapshot(
+        ticker="TEST",
+        as_of_date=date.today(),
+        realized_vol_10d=0.15,
+        realized_vol_20d=0.15,
+        realized_vol_30d=0.15,
+        front_expiry_iv=0.35,  # IV/HV = 2.33 → very expensive
+        back_expiry_iv=0.30,
+        term_structure_slope=-0.05,
+        iv_rank=80.0,
+        meta=ProviderMeta(source_name="mock", confidence_score=1.0),
+    )
+    result = engine.score("TEST", good_earnings, good_price, expensive_vol, good_chain, good_liquidity)
+    gap_factor = next(f for f in result.factors if f.name == "IV/HV Gap")
+    assert gap_factor.raw_score <= 20.0
+    # Should also generate a warning
+    assert any("IV/HV ratio" in w for w in result.risk_warnings)
