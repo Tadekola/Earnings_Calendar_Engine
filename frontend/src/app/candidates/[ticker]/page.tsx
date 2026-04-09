@@ -201,7 +201,7 @@ export default function CandidateDetailPage() {
             <div>
               <p className="text-xs text-gray-500 dark:text-gray-400">Profit Zone</p>
               <p className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                ${trade.profit_zone_low.toFixed(1)} - ${trade.profit_zone_high.toFixed(1)}
+                ${trade.profit_zone_low?.toFixed(1) ?? "0.0"} - ${trade.profit_zone_high?.toFixed(1) ?? "0.0"}
               </p>
             </div>
             <div>
