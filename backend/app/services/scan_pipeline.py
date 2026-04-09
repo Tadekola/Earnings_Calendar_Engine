@@ -360,40 +360,12 @@ class ScanPipeline:
                 chain=chain,
                 liquidity=strat_liq,
             )
-            
-            # Apply Regime Bonus
-            bonus_rationale = ""
-            if strategy.strategy_type == "DOUBLE_CALENDAR" and in_backwardation:
-                bonus = 10.0
-                strat_score.factors.append(ScoreFactor(
-                    name="Regime Filter",
-                    weight=10.0,
-                    raw_score=100.0,
-                    weighted_score=bonus,
-                    rationale="IV Backwardation regime detected. +10 bonus for Double Calendar."
-                ))
-                strat_score.overall_score = min(100.0, strat_score.overall_score + bonus)
-                bonus_rationale = " (+10 bonus for IV Backwardation regime)"
-            elif strategy.strategy_type == "BUTTERFLY" and high_absolute_iv:
-                bonus = 10.0
-                strat_score.factors.append(ScoreFactor(
-                    name="Regime Filter",
-                    weight=10.0,
-                    raw_score=100.0,
-                    weighted_score=bonus,
-                    rationale="High Absolute IV regime detected. +10 bonus for Butterfly."
-                ))
-                strat_score.overall_score = min(100.0, strat_score.overall_score + bonus)
-                bonus_rationale = " (+10 bonus for High Absolute IV regime)"
-                
-            if bonus_rationale:
-                strat_score.rationale_summary += bonus_rationale
 
             if best_result is None or strat_score.overall_score > best_result.overall_score:
                 best_result = strat_score
                 best_strategy = strategy.strategy_type
 
-        # Re-classify based on final boosted score
+        # Re-classify based on final score
         if best_result.overall_score >= self._settings.scoring.RECOMMEND_THRESHOLD:
             best_result.classification = RecommendationClass.RECOMMEND
         elif best_result.overall_score >= self._settings.scoring.WATCHLIST_THRESHOLD:

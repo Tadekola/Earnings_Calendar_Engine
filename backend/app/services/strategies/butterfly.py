@@ -118,24 +118,47 @@ class ButterflyStrategy(BaseOptionsStrategy):
             weight=25.0,
             raw_score=rr_score,
             weighted_score=rr_score * 0.25,
-            rationale=f"Reward/Risk is {reward_to_risk:.1f}:1 (Target 4:1 optimal)."
+            rationale=f"Estimated Max Loss: ${max_loss:.2f}, Credit: ${net_credit:.2f}. "
+                      f"R/R is 1:{reward_to_risk:.1f} (target 1:4)."
         ))
 
-        overall = sum(f.weighted_score for f in factors)
-        classification = RecommendationClass.NO_TRADE
-        if overall >= 80:
-            classification = RecommendationClass.RECOMMEND
-        elif overall >= 65:
-            classification = RecommendationClass.WATCHLIST
+        # Regime Filter Bonus
+        ivp = vol.iv_percentile or 0.0
+        high_absolute_iv = (ivp > 0.8) # proxy for 52-wk high
 
+        bonus_rationale = ""
+        if high_absolute_iv:
+            factors.append(ScoreFactor(
+                name="Regime Filter",
+                weight=10.0,
+                raw_score=100.0,
+                weighted_score=10.0,
+                rationale="High Absolute IV regime detected. +10 bonus for Butterfly."
+            ))
+            bonus_rationale = " (+10 bonus for High Absolute IV regime)"
+
+        overall_score = min(100.0, sum(f.weighted_score for f in factors))
+        classification = RecommendationClass.NO_TRADE
+        if overall_score >= self._settings.scoring.RECOMMEND_THRESHOLD:
+            classification = RecommendationClass.RECOMMEND
+        elif overall_score >= self._settings.scoring.WATCHLIST_THRESHOLD:
+            classification = RecommendationClass.WATCHLIST
+            
+        warnings = []
+        if not liquidity.passed:
+            warnings.append(f"Liquidity rejected: {'; '.join(liquidity.rejection_reasons)}")
+        if gap_risk > 0.10:
+            warnings.append(f"High Gap Risk: estimated expected move {gap_risk*100:.1f}% exceeds typical spread width.")
+
+        rationale = f"Butterfly Score: {overall_score:.1f}/100. {bonus_rationale}"
+        
         return ScoringResult(
             ticker=ticker,
-            overall_score=round(overall, 1),
+            overall_score=round(overall_score, 1),
             classification=classification,
             factors=factors,
             risk_warnings=warnings,
-            rationale_summary=f"Butterfly Score: {overall:.1f}",
-            scoring_version="2.0.0-BFLY"
+            rationale_summary=rationale
         )
 
     def build_trade_structure(

@@ -69,6 +69,24 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
                 rationale="Double Calendars retain back-month extrinsic value, limiting true max loss."
             )
         )
+
+        # Regime Filter Bonus
+        front_iv = vol.front_expiry_iv or 0.0
+        back_iv = vol.back_expiry_iv or 0.0
+        in_backwardation = (front_iv > back_iv * 1.10)  # > 10%
+        
+        if in_backwardation:
+            scoring_result.factors.append(
+                ScoreFactor(
+                    name="Regime Filter",
+                    weight=10.0,
+                    raw_score=100.0,
+                    weighted_score=10.0,
+                    rationale="IV Backwardation regime detected. +10 bonus for Double Calendar."
+                )
+            )
+            scoring_result.rationale_summary += " (+10 bonus for IV Backwardation regime)"
+
         scoring_result.overall_score = min(100.0, sum(f.weighted_score for f in scoring_result.factors))
         
         if scoring_result.overall_score >= self._settings.scoring.RECOMMEND_THRESHOLD:
