@@ -79,7 +79,7 @@ async def get_recommended_trade(request: Request, ticker: str, strategy: str | N
 
     try:
         trade = await engine.build_recommended(ticker)
-    except ValueError as e:
+    except ValueError:
         raise_not_found("Trade", ticker)
     return _to_response(trade)
 

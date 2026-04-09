@@ -4,21 +4,22 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from app.core.config import Settings
-from app.core.enums import OperatingMode, RecommendationClass, RejectionReason, ScanStage, UniverseSource
-from app.schemas.scan import (
-    ScanResultResponse,
-    ScanRunResponse,
+from app.core.enums import (
+    OperatingMode,
+    RecommendationClass,
+    RejectionReason,
+    ScanStage,
+    UniverseSource,
 )
+from app.core.logging import get_logger
+from app.providers.registry import ProviderRegistry
 from app.services.base_strategy import StrategyFactory
 from app.services.liquidity import LiquidityEngine
-from app.services.scoring import ScoringEngine, ScoreFactor
-from app.services.trade_builder import TradeConstructionEngine
-from app.providers.registry import ProviderRegistry
-from app.core.logging import get_logger
+from app.services.scoring import ScoringEngine
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -68,7 +69,7 @@ class ScanPipeline:
         progress_callback: ProgressCallback | None = None,
     ) -> ScanRunResult:
         run_id = str(uuid.uuid4())
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
 
         if tickers:
             universe = tickers
@@ -118,7 +119,7 @@ class ScanPipeline:
                     pass
 
         results.sort(key=lambda r: r.overall_score or 0, reverse=True)
-        completed = datetime.now(timezone.utc)
+        completed = datetime.now(UTC)
 
         logger.info(
             "scan_completed",
@@ -182,6 +183,7 @@ class ScanPipeline:
         and FMP quote (cheap) to check price + market cap.
         Runs concurrently in batches to stay fast."""
         import asyncio
+
         from app.providers.live.fmp import FMPPriceProvider
 
         pf = self._settings.prefilter
@@ -334,12 +336,12 @@ class ScanPipeline:
         active_strategies = StrategyFactory(self._settings, self._registry).get_active_strategies()
         best_result = None
         best_strategy = None
-        
+
         # Compute base regime flags
         front_iv = vol.front_expiry_iv or 0.0
         back_iv = vol.back_expiry_iv or 0.0
         ivp = vol.iv_percentile or 0.0
-        
+
         in_backwardation = (front_iv > back_iv * 1.10)  # > 10%
         high_absolute_iv = (ivp > 0.8) # proxy for 52-wk high
 
@@ -349,9 +351,9 @@ class ScanPipeline:
                 strat_front, strat_back = front_exp, back_exp
             else: # BUTTERFLY
                 strat_front, strat_back = front_exp, front_exp
-                
+
             strat_liq = self._liquidity_engine.evaluate_full(price, chain, strat_front, strat_back)
-            
+
             strat_score = strategy.calculate_score(
                 ticker=ticker,
                 earnings=earnings,

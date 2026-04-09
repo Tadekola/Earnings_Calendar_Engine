@@ -1,7 +1,7 @@
 """Persist and load user setting overrides from the app_settings DB table."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -51,7 +51,7 @@ class SettingsPersistenceService:
 
             if existing:
                 existing.value = str_value
-                existing.updated_at = datetime.now(timezone.utc)
+                existing.updated_at = datetime.now(UTC)
                 existing.updated_by = "user"
             else:
                 self._session.add(AppSetting(

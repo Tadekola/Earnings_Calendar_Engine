@@ -6,8 +6,8 @@ from app.core.config import Settings
 from app.core.enums import LegSide, OptionType, RecommendationClass
 from app.providers.base import (
     EarningsRecord,
-    OptionsChainSnapshot,
     OptionRecord,
+    OptionsChainSnapshot,
     PriceRecord,
     VolatilitySnapshot,
 )
@@ -57,13 +57,13 @@ class ButterflyStrategy(BaseOptionsStrategy):
         # Custom scoring logic for Butterfly
         factors: list[ScoreFactor] = []
         warnings: list[str] = []
-        
+
         # 1. IV Percentile (35%): Reward IVP > 80
         ivp = vol.iv_percentile or 0.0
         ivp_score = min(100.0, max(0.0, (ivp - 0.4) * 200)) if ivp > 0.4 else 0.0
         if ivp > 0.8:
             ivp_score = 100.0
-            
+
         factors.append(ScoreFactor(
             name="IV Percentile",
             weight=35.0,
@@ -72,19 +72,19 @@ class ButterflyStrategy(BaseOptionsStrategy):
             rationale=f"IV Percentile is {ivp*100:.1f}% (>80% is optimal for Butterflies)."
         ))
 
-        # We will need the actual trade to calculate Risk/Reward. 
-        # But `calculate_score` doesn't get the trade object. 
+        # We will need the actual trade to calculate Risk/Reward.
+        # But `calculate_score` doesn't get the trade object.
         # For now, we will add a placeholder for R/R that gets updated later, or estimate it.
         # Actually, the base class calculates score BEFORE trade build in the current pipeline.
         # Wait, the prompt says "Risk/Reward (25%): Minimum requirement 1:4". We can't know the exact R/R until trade is built!
         # I'll calculate an estimated R/R based on Greeks/Volatility, or we can just build the trade inside `calculate_score` if we really have to.
-        
+
         # 3. Residual Value Risk (Penalize gap risk)
         # Using ATR as a proxy for gap risk
         atr = vol.atr_14d or 0.0
         gap_risk = (atr / price.close) if price.close > 0 else 0.0
         gap_score = 100.0 - min(100.0, gap_risk * 1000) # High gap risk = low score
-        
+
         factors.append(ScoreFactor(
             name="Residual Gap Risk",
             weight=40.0,  # taking the remaining weight
@@ -98,20 +98,20 @@ class ButterflyStrategy(BaseOptionsStrategy):
         days_to = (earnings.earnings_date - date.today()).days
         front_iv = vol.front_expiry_iv or 0.25
         estimated_move = spot * front_iv * (days_to / 365) ** 0.5
-        
+
         expirations = sorted(chain.expirations)
         front_exp = self._select_short_expiry(expirations, earnings.earnings_date)
         body_strike = self._snap_strike(spot, chain, front_exp)
         lower_wing = self._snap_strike(spot - estimated_move, chain, front_exp)
         upper_wing = self._snap_strike(spot + estimated_move, chain, front_exp)
-        
+
         legs = self._build_legs(ticker, lower_wing, body_strike, upper_wing, front_exp, chain)
         total_debit = sum(l.debit for l in legs)
         net_credit = abs(total_debit) if total_debit < 0 else 0.0
         spread_width = body_strike - lower_wing
         max_loss = max(0.0, spread_width - net_credit)
         reward_to_risk = net_credit / max_loss if max_loss > 0 else 0
-        rr_score = min(100.0, (reward_to_risk / 4.0) * 100.0) 
+        rr_score = min(100.0, (reward_to_risk / 4.0) * 100.0)
 
         factors.append(ScoreFactor(
             name="Risk/Reward",
@@ -143,7 +143,7 @@ class ButterflyStrategy(BaseOptionsStrategy):
             classification = RecommendationClass.RECOMMEND
         elif overall_score >= self._settings.scoring.WATCHLIST_THRESHOLD:
             classification = RecommendationClass.WATCHLIST
-            
+
         warnings = []
         if not liquidity.passed:
             warnings.append(f"Liquidity rejected: {'; '.join(liquidity.rejection_reasons)}")
@@ -151,7 +151,7 @@ class ButterflyStrategy(BaseOptionsStrategy):
             warnings.append(f"High Gap Risk: estimated expected move {gap_risk*100:.1f}% exceeds typical spread width.")
 
         rationale = f"Butterfly Score: {overall_score:.1f}/100. {bonus_rationale}"
-        
+
         return ScoringResult(
             ticker=ticker,
             overall_score=round(overall_score, 1),
@@ -189,7 +189,7 @@ class ButterflyStrategy(BaseOptionsStrategy):
 
         # Body at ATM
         body_strike = self._snap_strike(spot, chain, front_exp)
-        
+
         # Wings at +/- 1.0 x Expected Move
         lower_wing = override_lower or self._snap_strike(spot - estimated_move, chain, front_exp)
         upper_wing = override_upper or self._snap_strike(spot + estimated_move, chain, front_exp)
@@ -206,24 +206,24 @@ class ButterflyStrategy(BaseOptionsStrategy):
 
         # Iron Butterfly is a credit spread. total_debit will be negative.
         net_credit = abs(total_debit) if total_debit < 0 else 0.0
-        
+
         # Spread width is the distance between body and wings (assuming symmetric)
         spread_width = body_strike - lower_wing
-        
+
         # Max Loss = Spread Width - Net Credit
         max_loss = max(0.0, spread_width - net_credit)
-        
+
         # Max Profit = Net Credit
         max_profit = net_credit
-        
+
         # Risk/Reward Ratio calculation: we want R:R of 1:4 (risk 1 to make 4)
         # So reward_to_risk = max_profit / max_loss
         reward_to_risk = max_profit / max_loss if max_loss > 0 else 0
-        
+
         # We already have Risk/Reward calculated in calculate_score, so we just run it:
         full_liq = self.validate_liquidity(price, chain, front_exp, front_exp)
         base_score = self.calculate_score(ticker, earnings, price, vol, chain, full_liq)
-        
+
         # Recalculate overall (should match base_score.overall_score)
         if base_score.overall_score >= 80:
             base_score.classification = RecommendationClass.RECOMMEND
@@ -233,16 +233,16 @@ class ButterflyStrategy(BaseOptionsStrategy):
             base_score.classification = RecommendationClass.NO_TRADE
 
         gap_risk = (vol.atr_14d or 0.0) / spot if spot > 0 else 0.0
-        
+
         key_risks = [
             "Earnings date may change — verify before entry",
             "Zero residual value if stock breaches wings",
             "High pin risk if stock lands exactly on body strike",
         ]
-        
+
         if gap_risk > 0.10:
             key_risks.append(f"High Risk: Average true range > 10% ({gap_risk*100:.1f}%). Highly susceptible to gap-overs.")
-        
+
         rationale = self.generate_rationale(ticker, days_to, lower_wing, body_strike, upper_wing, front_exp, total_debit, exit_date, base_score.overall_score)
 
         return ConstructedTrade(
@@ -271,7 +271,7 @@ class ButterflyStrategy(BaseOptionsStrategy):
         )
 
     def generate_rationale(
-        self, ticker: str, days_to: int, lower_wing: float, body_strike: float, upper_wing: float, 
+        self, ticker: str, days_to: int, lower_wing: float, body_strike: float, upper_wing: float,
         exp: date, total_debit: float, exit_date: date, score: float
     ) -> str:
         return (

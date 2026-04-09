@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -9,7 +9,6 @@ import pytest
 from app.core.config import FMPSettings, TradierSettings
 from app.providers.live.fmp import FMPEarningsProvider, FMPPriceProvider
 from app.providers.live.tradier import TradierOptionsProvider
-
 
 # ---------------------------------------------------------------------------
 # FMP Earnings Provider

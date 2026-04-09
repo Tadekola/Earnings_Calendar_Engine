@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -141,12 +141,12 @@ class TradierOptionsProvider(OptionsChainProvider):
         return OptionsChainSnapshot(
             ticker=ticker,
             spot_price=spot,
-            snapshot_time=datetime.now(timezone.utc),
+            snapshot_time=datetime.now(UTC),
             options=all_options,
             expirations=expirations,
             meta=ProviderMeta(
                 source_name=self._source,
-                freshness_timestamp=datetime.now(timezone.utc),
+                freshness_timestamp=datetime.now(UTC),
                 confidence_score=0.9 if all_options else 0.3,
             ),
         )
@@ -194,7 +194,7 @@ class TradierOptionsProvider(OptionsChainProvider):
             ok = "expirations" in (data or {})
             return ProviderMeta(
                 source_name=self._source,
-                freshness_timestamp=datetime.now(timezone.utc),
+                freshness_timestamp=datetime.now(UTC),
                 confidence_score=0.9 if ok else 0.0,
                 error_details=None if ok else "Invalid response",
             )

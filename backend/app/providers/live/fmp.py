@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -206,7 +206,7 @@ class FMPEarningsProvider(EarningsCalendarProvider):
             fiscal_year=year,
             meta=ProviderMeta(
                 source_name=self._source,
-                freshness_timestamp=datetime.now(timezone.utc),
+                freshness_timestamp=datetime.now(UTC),
                 confidence_score=0.85,
             ),
         )
@@ -223,7 +223,7 @@ class FMPEarningsProvider(EarningsCalendarProvider):
             ok = isinstance(data, list)
             return ProviderMeta(
                 source_name=self._source,
-                freshness_timestamp=datetime.now(timezone.utc),
+                freshness_timestamp=datetime.now(UTC),
                 confidence_score=0.9 if ok else 0.0,
                 error_details=None if ok else "Invalid response format",
             )
@@ -351,7 +351,7 @@ class FMPPriceProvider(PriceProvider):
                 avg_dollar_volume=float(item.get("avgVolume", 0)) * close if item.get("avgVolume") else None,
                 meta=ProviderMeta(
                     source_name=self._source,
-                    freshness_timestamp=datetime.now(timezone.utc),
+                    freshness_timestamp=datetime.now(UTC),
                     confidence_score=0.9,
                 ),
             )
@@ -390,7 +390,7 @@ class FMPPriceProvider(PriceProvider):
                     volume=int(item.get("volume", 0)),
                     meta=ProviderMeta(
                         source_name=self._source,
-                        freshness_timestamp=datetime.now(timezone.utc),
+                        freshness_timestamp=datetime.now(UTC),
                         confidence_score=0.9,
                     ),
                 ))
@@ -429,7 +429,7 @@ class FMPPriceProvider(PriceProvider):
             ok = isinstance(data, list) and len(data) > 0
             return ProviderMeta(
                 source_name=self._source,
-                freshness_timestamp=datetime.now(timezone.utc),
+                freshness_timestamp=datetime.now(UTC),
                 confidence_score=0.9 if ok else 0.0,
                 error_details=None if ok else "Invalid response",
             )

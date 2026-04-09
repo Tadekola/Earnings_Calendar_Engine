@@ -73,7 +73,7 @@ async def test_earnings():
         else:
             report("warn", f"{t} earnings", "Not in next 60 days")
 
-    report("pass" if found >= 3 else "fail", f"Earnings coverage", f"{found}/{len(test_tickers)} tickers have dates")
+    report("pass" if found >= 3 else "fail", "Earnings coverage", f"{found}/{len(test_tickers)} tickers have dates")
 
     # Cross-check: MSFT should report around late April 2026
     msft = await r.earnings.get_earnings_date("MSFT")
@@ -112,7 +112,7 @@ async def test_prices():
     # Test price history
     aapl_hist = await r.price.get_price_history("AAPL", date.today() - timedelta(days=30), date.today())
     if aapl_hist and len(aapl_hist) > 0:
-        report("pass", f"AAPL 30d history", f"{len(aapl_hist)} trading days")
+        report("pass", "AAPL 30d history", f"{len(aapl_hist)} trading days")
         # Verify dates are recent
         latest = max(h.trade_date for h in aapl_hist)
         days_stale = (date.today() - latest).days

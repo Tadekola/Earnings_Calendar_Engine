@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
 
@@ -19,7 +19,7 @@ router = APIRouter(tags=["health"])
 async def get_health(request: Request) -> HealthResponse:
     registry = request.app.state.provider_registry
     settings = request.app.state.settings
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     provider_statuses = await registry.health_check_all()
     providers: list[ProviderHealthResponse] = []
@@ -60,7 +60,7 @@ async def get_health(request: Request) -> HealthResponse:
 
 @router.get("/health/live", response_model=LivenessResponse)
 async def liveness() -> LivenessResponse:
-    return LivenessResponse(timestamp=datetime.now(timezone.utc))
+    return LivenessResponse(timestamp=datetime.now(UTC))
 
 
 @router.get("/health/ready", response_model=ReadinessResponse)
@@ -74,7 +74,7 @@ async def readiness(request: Request) -> ReadinessResponse:
     all_ready = all(checks.values())
     return ReadinessResponse(
         status="ready" if all_ready else "not_ready",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         checks=checks,
     )
 

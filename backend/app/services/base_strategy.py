@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from datetime import date
 
 from app.core.config import Settings
@@ -91,9 +90,9 @@ class StrategyFactory:
 
     def get_active_strategies(self) -> list[BaseOptionsStrategy]:
         """Returns instances of all currently active strategies."""
-        from app.services.strategies.double_calendar import DoubleCalendarStrategy
         from app.services.strategies.butterfly import ButterflyStrategy
-        
+        from app.services.strategies.double_calendar import DoubleCalendarStrategy
+
         strategies = [
             DoubleCalendarStrategy(self._settings, self._registry),
             ButterflyStrategy(self._settings, self._registry),

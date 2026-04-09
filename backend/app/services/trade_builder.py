@@ -1,22 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 
 from app.core.config import Settings
 from app.core.enums import LegSide, OptionType, RecommendationClass
 from app.core.logging import get_logger
 from app.core.security import RISK_DISCLAIMER
 from app.providers.base import (
-    EarningsRecord,
-    OptionsChainSnapshot,
     OptionRecord,
-    PriceRecord,
-    VolatilitySnapshot,
 )
 from app.providers.registry import ProviderRegistry
-from app.services.liquidity import LiquidityEngine
-from app.services.scoring import ScoringEngine
 
 logger = get_logger(__name__)
 
@@ -94,7 +88,7 @@ class TradeConstructionEngine:
     def __init__(self, settings: Settings, registry: ProviderRegistry) -> None:
         self._settings = settings
         self._registry = registry
-        
+
         from app.services.base_strategy import StrategyFactory
         self._strategy = StrategyFactory(settings, registry).get_active_strategies()[0]
 

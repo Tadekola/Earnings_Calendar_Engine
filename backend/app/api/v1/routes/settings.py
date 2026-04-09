@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -123,7 +121,7 @@ async def get_scheduler_status(request: Request) -> SchedulerStatusResponse:
 @router.post("/scheduler/trigger")
 async def trigger_scan_now(request: Request) -> dict:
     """Manually trigger an immediate scan."""
-    from app.services.scheduler import get_scheduler, scheduled_scan
+    from app.services.scheduler import scheduled_scan
     settings = request.app.state.settings
     registry = request.app.state.provider_registry
 

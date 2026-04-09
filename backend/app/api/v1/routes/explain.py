@@ -3,7 +3,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 
 from app.core.enums import RecommendationClass
-from app.core.errors import raise_not_found
 from app.schemas.explain import (
     ExplainFactorResponse,
     ExplainResponse,
@@ -11,7 +10,6 @@ from app.schemas.explain import (
     RejectionsListResponse,
 )
 from app.services.liquidity import LiquidityEngine
-from app.services.scoring import ScoringEngine
 
 router = APIRouter(tags=["explain"])
 
@@ -51,7 +49,7 @@ async def explain_ticker(request: Request, ticker: str, strategy: str | None = N
     factory = StrategyFactory(settings, registry)
     active_strats = factory.get_active_strategies()
     strat = next((s for s in active_strats if s.strategy_type.upper() == strategy.upper()), active_strats[0]) if strategy else active_strats[0]
-    
+
     # Since explain doesn't build the trade, we have to determine expirations
     # Let's temporarily build the trade to get expirations and full evaluation
     try:
@@ -112,6 +110,7 @@ async def explain_ticker(request: Request, ticker: str, strategy: str | None = N
 
 def _default_price(ticker: str):
     from datetime import date
+
     from app.providers.base import PriceRecord
     return PriceRecord(ticker=ticker, trade_date=date.today(), open=0, high=0, low=0, close=0, volume=0)
 

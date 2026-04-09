@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
-
 from app.core.config import Settings
-from app.core.enums import ProviderType
 from app.core.errors import ConfigurationError
 from app.core.logging import get_logger
 from app.providers.base import (

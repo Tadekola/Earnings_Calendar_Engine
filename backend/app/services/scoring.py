@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date
 
 from app.core.config import EarningsWindowSettings, ScoringSettings
 from app.core.enums import RecommendationClass

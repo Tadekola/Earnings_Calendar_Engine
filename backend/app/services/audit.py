@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,7 +36,7 @@ class AuditService:
             payload=json.dumps(payload) if payload else None,
             provider_source=provider_source,
             scoring_version=scoring_version,
-            data_freshness=datetime.now(timezone.utc),
+            data_freshness=datetime.now(UTC),
         )
         self._session.add(entry)
         logger.debug("audit_logged", event_type=event_type, ticker=ticker)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from app.providers.base import PriceProvider, PriceRecord, ProviderMeta
 
@@ -54,7 +54,7 @@ class MockPriceProvider(PriceProvider):
             avg_dollar_volume=round(close * mock["avg_vol"], 2),
             meta=ProviderMeta(
                 source_name=self._source,
-                freshness_timestamp=datetime.now(timezone.utc),
+                freshness_timestamp=datetime.now(UTC),
                 confidence_score=0.95,
             ),
         )
@@ -87,7 +87,7 @@ class MockPriceProvider(PriceProvider):
                         volume=int(mock["avg_vol"] * self._rng.uniform(0.6, 1.4)),
                         meta=ProviderMeta(
                             source_name=self._source,
-                            freshness_timestamp=datetime.now(timezone.utc),
+                            freshness_timestamp=datetime.now(UTC),
                             confidence_score=0.9,
                         ),
                     )
@@ -98,6 +98,6 @@ class MockPriceProvider(PriceProvider):
     async def health_check(self) -> ProviderMeta:
         return ProviderMeta(
             source_name=self._source,
-            freshness_timestamp=datetime.now(timezone.utc),
+            freshness_timestamp=datetime.now(UTC),
             confidence_score=1.0,
         )

@@ -6,8 +6,8 @@ from app.core.config import Settings
 from app.core.enums import LegSide, OptionType, RecommendationClass
 from app.providers.base import (
     EarningsRecord,
-    OptionsChainSnapshot,
     OptionRecord,
+    OptionsChainSnapshot,
     PriceRecord,
     VolatilitySnapshot,
 )
@@ -15,6 +15,7 @@ from app.services.base_strategy import BaseOptionsStrategy
 from app.services.liquidity import LiquidityCheckResult, LiquidityEngine
 from app.services.scoring import ScoreFactor, ScoringEngine, ScoringResult
 from app.services.trade_builder import ConstructedTrade, TradeLeg
+
 
 class DoubleCalendarStrategy(BaseOptionsStrategy):
     """
@@ -57,7 +58,7 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
             chain=chain,
             liquidity=liquidity,
         )
-        
+
         # Capital Preservation Bonus for Double Calendars
         # Max loss is capped at debit, but back-month retains extrinsic value
         scoring_result.factors.append(
@@ -74,7 +75,7 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
         front_iv = vol.front_expiry_iv or 0.0
         back_iv = vol.back_expiry_iv or 0.0
         in_backwardation = (front_iv > back_iv * 1.10)  # > 10%
-        
+
         if in_backwardation:
             scoring_result.factors.append(
                 ScoreFactor(
@@ -87,7 +88,7 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
             )
 
         scoring_result.overall_score = min(100.0, sum(f.weighted_score for f in scoring_result.factors))
-        
+
         if scoring_result.overall_score >= self._settings.scoring.RECOMMEND_THRESHOLD:
             scoring_result.classification = RecommendationClass.RECOMMEND
         elif scoring_result.overall_score >= self._settings.scoring.WATCHLIST_THRESHOLD:
@@ -95,17 +96,17 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
 
         days_to = (earnings.earnings_date - __import__("datetime").date.today()).days
         scoring_result.rationale_summary = self._scoring._build_rationale(
-            ticker, 
-            scoring_result.overall_score, 
-            scoring_result.classification, 
-            scoring_result.factors, 
-            days_to, 
+            ticker,
+            scoring_result.overall_score,
+            scoring_result.classification,
+            scoring_result.factors,
+            days_to,
             earnings
         )
-        
+
         if in_backwardation:
             scoring_result.rationale_summary += " (+10 bonus for IV Backwardation regime)"
-            
+
         return scoring_result
 
     def build_trade_structure(
@@ -143,7 +144,7 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
             valid_strikes = sorted(short_strikes.intersection(long_strikes))
             if not valid_strikes:
                 valid_strikes = sorted({o.strike for o in chain.options})
-                
+
             atm_idx = min(range(len(valid_strikes)), key=lambda i: abs(valid_strikes[i] - spot)) if valid_strikes else 0
             if atm_idx > 0 and atm_idx < len(valid_strikes) - 1:
                 lower = valid_strikes[max(0, atm_idx - 2)]
@@ -199,7 +200,7 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
         )
 
     def generate_rationale(
-        self, ticker: str, days_to: int, lower: float, upper: float, 
+        self, ticker: str, days_to: int, lower: float, upper: float,
         short_exp: date, long_exp: date, total_debit: float, exit_date: date, score: float
     ) -> str:
         return (
@@ -227,13 +228,13 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
         short_strikes = {o.strike for o in chain.options if o.expiration == short_exp}
         long_strikes = {o.strike for o in chain.options if o.expiration == long_exp}
         valid_strikes = sorted(short_strikes.intersection(long_strikes))
-        
+
         if not valid_strikes:
             strikes = sorted({o.strike for o in chain.options})
             if not strikes:
                 return round(target, 0)
             return min(strikes, key=lambda s: abs(s - target))
-            
+
         return min(valid_strikes, key=lambda s: abs(s - target))
 
     def _build_legs(

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date
 
 from fastapi import APIRouter, Request
 
 from app.core.errors import raise_not_found
-from app.schemas.scan import ScanResultResponse, ScoreBreakdown
+from app.schemas.scan import ScanResultResponse
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 
@@ -34,7 +34,7 @@ async def get_candidate(request: Request, ticker: str) -> ScanResultResponse:
         overall_score=None,
         stage_reached="CANDIDATE_LOOKUP",
         rationale_summary=(
-            f"{ticker}: Spot {'${:.2f}'.format(price_rec.close) if price_rec else 'N/A'}. "
+            f"{ticker}: Spot {f'${price_rec.close:.2f}' if price_rec else 'N/A'}. "
             f"Earnings in {days_to} days ({earnings_rec.confidence}). "
             f"IV Rank: {vol_snap.iv_rank if vol_snap.iv_rank else 'N/A'}. "
             f"Term structure slope: {vol_snap.term_structure_slope if vol_snap.term_structure_slope else 'N/A'}. "

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import numpy as np
 
@@ -84,7 +84,7 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
             term_structure_slope=term_slope,
             meta=ProviderMeta(
                 source_name=self._source,
-                freshness_timestamp=datetime.now(timezone.utc),
+                freshness_timestamp=datetime.now(UTC),
                 confidence_score=0.8 if history else 0.2,
             ),
         )
@@ -130,6 +130,6 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
     async def health_check(self) -> ProviderMeta:
         return ProviderMeta(
             source_name=self._source,
-            freshness_timestamp=datetime.now(timezone.utc),
+            freshness_timestamp=datetime.now(UTC),
             confidence_score=0.8,
         )

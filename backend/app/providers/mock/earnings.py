@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from app.providers.base import EarningsCalendarProvider, EarningsRecord, ProviderMeta
 
@@ -30,7 +30,7 @@ MOCK_EARNINGS: dict[str, dict] = {
 class MockEarningsProvider(EarningsCalendarProvider):
     def __init__(self) -> None:
         self._source = "mock_earnings"
-        self._last_fetch = datetime.now(timezone.utc)
+        self._last_fetch = datetime.now(UTC)
 
     async def get_upcoming_earnings(
         self, tickers: list[str], days_ahead: int = 30
@@ -61,7 +61,7 @@ class MockEarningsProvider(EarningsCalendarProvider):
             fiscal_year=mock["year"],
             meta=ProviderMeta(
                 source_name=self._source,
-                freshness_timestamp=datetime.now(timezone.utc),
+                freshness_timestamp=datetime.now(UTC),
                 confidence_score={"CONFIRMED": 0.95, "ESTIMATED": 0.7, "UNVERIFIED": 0.3}.get(
                     mock["confidence"], 0.3
                 ),
@@ -71,6 +71,6 @@ class MockEarningsProvider(EarningsCalendarProvider):
     async def health_check(self) -> ProviderMeta:
         return ProviderMeta(
             source_name=self._source,
-            freshness_timestamp=datetime.now(timezone.utc),
+            freshness_timestamp=datetime.now(UTC),
             confidence_score=1.0,
         )

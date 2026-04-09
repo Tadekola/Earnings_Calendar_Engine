@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from app.providers.base import ProviderMeta, VolatilityMetricsProvider, VolatilitySnapshot
 
@@ -41,7 +41,7 @@ class MockVolatilityProvider(VolatilityMetricsProvider):
                 as_of_date=date.today(),
                 meta=ProviderMeta(
                     source_name=self._source,
-                    freshness_timestamp=datetime.now(timezone.utc),
+                    freshness_timestamp=datetime.now(UTC),
                     confidence_score=0.0,
                     error_details=f"No mock volatility data for {ticker}",
                 ),
@@ -62,7 +62,7 @@ class MockVolatilityProvider(VolatilityMetricsProvider):
             term_structure_slope=slope,
             meta=ProviderMeta(
                 source_name=self._source,
-                freshness_timestamp=datetime.now(timezone.utc),
+                freshness_timestamp=datetime.now(UTC),
                 confidence_score=0.9,
             ),
         )
@@ -70,6 +70,6 @@ class MockVolatilityProvider(VolatilityMetricsProvider):
     async def health_check(self) -> ProviderMeta:
         return ProviderMeta(
             source_name=self._source,
-            freshness_timestamp=datetime.now(timezone.utc),
+            freshness_timestamp=datetime.now(UTC),
             confidence_score=1.0,
         )

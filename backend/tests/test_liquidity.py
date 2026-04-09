@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
 from app.core.config import LiquiditySettings
-from app.providers.base import OptionRecord, OptionsChainSnapshot, PriceRecord, ProviderMeta
+from app.providers.base import OptionRecord, OptionsChainSnapshot, PriceRecord
 from app.services.liquidity import LiquidityEngine
 
 
@@ -64,7 +64,7 @@ def _make_chain(spot: float, front_exp: date, back_exp: date, good_liquidity: bo
     return OptionsChainSnapshot(
         ticker="TEST",
         spot_price=spot,
-        snapshot_time=datetime.now(timezone.utc),
+        snapshot_time=datetime.now(UTC),
         options=options,
         expirations=[front_exp, back_exp],
     )
@@ -104,7 +104,7 @@ def test_options_liquidity_no_expirations(engine):
     chain = OptionsChainSnapshot(
         ticker="EMPTY",
         spot_price=100.0,
-        snapshot_time=datetime.now(timezone.utc),
+        snapshot_time=datetime.now(UTC),
         options=[],
         expirations=[],
     )

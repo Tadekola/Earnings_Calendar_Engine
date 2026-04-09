@@ -44,7 +44,7 @@ async def test_rate_limit_throttles():
     # Use a timeout so we don't actually wait 60s
     try:
         await asyncio.wait_for(limiter.acquire(), timeout=0.5)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
     elapsed = time.monotonic() - start
     # Should have waited (either timed out at 0.5s or waited some time)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -87,7 +87,7 @@ def good_chain():
     return OptionsChainSnapshot(
         ticker="AAPL",
         spot_price=spot,
-        snapshot_time=datetime.now(timezone.utc),
+        snapshot_time=datetime.now(UTC),
         options=options,
         expirations=[front, back],
     )

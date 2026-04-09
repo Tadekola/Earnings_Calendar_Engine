@@ -2,7 +2,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import candidates, dashboard, earnings, explain, export, scan, settings, trades, universe, ws
+from app.api.v1.routes import (
+    candidates,
+    dashboard,
+    earnings,
+    explain,
+    export,
+    scan,
+    settings,
+    trades,
+    universe,
+    ws,
+)
 
 api_router = APIRouter()
 

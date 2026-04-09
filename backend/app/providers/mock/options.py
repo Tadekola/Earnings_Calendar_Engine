@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import random
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from app.providers.base import (
     OptionRecord,
@@ -127,12 +127,12 @@ class MockOptionsProvider(OptionsChainProvider):
         return OptionsChainSnapshot(
             ticker=ticker.upper(),
             spot_price=spot,
-            snapshot_time=datetime.now(timezone.utc),
+            snapshot_time=datetime.now(UTC),
             options=options,
             expirations=all_exps,
             meta=ProviderMeta(
                 source_name=self._source,
-                freshness_timestamp=datetime.now(timezone.utc),
+                freshness_timestamp=datetime.now(UTC),
                 confidence_score=0.9,
             ),
         )
@@ -143,6 +143,6 @@ class MockOptionsProvider(OptionsChainProvider):
     async def health_check(self) -> ProviderMeta:
         return ProviderMeta(
             source_name=self._source,
-            freshness_timestamp=datetime.now(timezone.utc),
+            freshness_timestamp=datetime.now(UTC),
             confidence_score=1.0,
         )

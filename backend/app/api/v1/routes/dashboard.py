@@ -1,7 +1,7 @@
 """Dashboard summary API — aggregates recent scan stats and top candidates."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel

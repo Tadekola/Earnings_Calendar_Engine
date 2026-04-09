@@ -4,9 +4,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
-from app.core.enums import RecommendationClass, ScanStage
+from app.core.enums import RecommendationClass
 from app.db.session import Base
-from app.models.scan import CandidateScore, ScanResult, ScanRun
 from app.providers.registry import ProviderRegistry
 from app.services.scan_persistence import ScanPersistenceService
 from app.services.scan_pipeline import ScanPipeline

@@ -34,26 +34,28 @@ async def test_legs_structure(engine):
     trade = await engine.build_recommended("MSFT")
     assert len(trade.legs) == 4
 
-    leg_types = [(l.option_type, l.side) for l in trade.legs]
+    leg_types = [(leg.option_type, leg.side) for leg in trade.legs]
     assert (OptionType.PUT, LegSide.SELL) in leg_types
     assert (OptionType.PUT, LegSide.BUY) in leg_types
     assert (OptionType.CALL, LegSide.SELL) in leg_types
     assert (OptionType.CALL, LegSide.BUY) in leg_types
 
-    for l in trade.legs:
-        assert l.leg_number in (1, 2, 3, 4)
-        assert l.strike > 0
-        assert l.expiration is not None
+    for leg in trade.legs:
+        assert leg.leg_number in (1, 2, 3, 4)
+        assert leg.strike > 0
+        assert leg.bid >= 0
+        assert leg.ask >= 0
+        assert leg.implied_volatility >= 0
 
 
 @pytest.mark.asyncio
 async def test_sell_legs_short_buy_legs_long(engine):
     trade = await engine.build_recommended("NVDA")
-    for l in trade.legs:
-        if l.side == LegSide.SELL:
-            assert l.expiration == trade.short_expiry
-        elif l.side == LegSide.BUY:
-            assert l.expiration == trade.long_expiry
+    for leg in trade.legs:
+        if leg.side == LegSide.SELL:
+            assert leg.expiration == trade.short_expiry
+        else:
+            assert leg.expiration == trade.long_expiry
 
 
 @pytest.mark.asyncio

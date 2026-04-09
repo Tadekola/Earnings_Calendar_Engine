@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -39,7 +39,7 @@ async def export_scans_csv(db: AsyncSession = Depends(get_db)) -> StreamingRespo
         ])
 
     buf.seek(0)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",
@@ -75,7 +75,7 @@ async def export_candidates_csv(
         ])
 
     buf.seek(0)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",
@@ -115,7 +115,7 @@ async def export_scores_csv(
         ])
 
     buf.seek(0)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",

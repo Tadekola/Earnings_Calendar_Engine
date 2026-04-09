@@ -214,6 +214,7 @@ async def get_scan_results(db: AsyncSession = Depends(get_db)) -> list[ScanSumma
     # Try DB first, fall back to in-memory store
     try:
         from sqlalchemy import select
+
         from app.models.scan import ScanRun
         stmt = select(ScanRun).order_by(ScanRun.started_at.desc()).limit(20)
         result = await db.execute(stmt)
