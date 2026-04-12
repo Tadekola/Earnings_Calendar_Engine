@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.v1.routes import (
+    backtest,
     candidates,
     dashboard,
     earnings,
@@ -27,3 +28,4 @@ api_router.include_router(settings.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(export.router)
 api_router.include_router(ws.router)
+api_router.include_router(backtest.router)

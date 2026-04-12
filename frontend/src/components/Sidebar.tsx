@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Settings,
   Activity,
+  FlaskConical,
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ const links = [
   { href: "/history", label: "Scan History", icon: History },
   { href: "/trades", label: "Trade Builder", icon: Wrench },
   { href: "/rejections", label: "Rejections", icon: XCircle },
+  { href: "/backtests", label: "Backtests", icon: FlaskConical },
   { href: "/audit", label: "Audit Trail", icon: ClipboardList },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

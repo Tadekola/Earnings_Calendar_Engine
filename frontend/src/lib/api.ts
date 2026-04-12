@@ -219,6 +219,80 @@ export interface IVTermStructure {
   points: IVPoint[];
 }
 
+// ── Backtesting ──────────────────────────────────────────
+
+export interface BacktestTrade {
+  id: number;
+  backtest_id: string;
+  ticker: string;
+  strategy_type: string;
+  layer_id: string | null;
+  account_id: string | null;
+  entry_score: number;
+  entry_date: string;
+  entry_spot: number;
+  entry_debit: number;
+  exit_date: string | null;
+  exit_spot: number | null;
+  exit_credit: number | null;
+  exit_reason: string | null;
+  earnings_date: string | null;
+  earnings_move_pct: number | null;
+  realized_pnl: number | null;
+  realized_pnl_pct: number | null;
+  hold_days: number | null;
+  outcome: string | null;
+  lower_strike: number | null;
+  upper_strike: number | null;
+}
+
+export interface BacktestSummary {
+  backtest_id: string;
+  name: string;
+  status: string;
+  strategy_filter: string | null;
+  min_score: number;
+  start_date: string | null;
+  end_date: string | null;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  total_pnl: number;
+  avg_pnl_per_trade: number | null;
+  win_rate: number | null;
+  avg_hold_days: number | null;
+  max_drawdown: number | null;
+  sharpe_ratio: number | null;
+  started_at: string;
+  completed_at: string | null;
+  error_message: string | null;
+}
+
+export interface BacktestDetail extends BacktestSummary {
+  trades: BacktestTrade[];
+}
+
+export interface BacktestListResponse {
+  total: number;
+  backtests: BacktestSummary[];
+}
+
+export interface PnlCurvePoint {
+  trade_index: number;
+  ticker: string;
+  cumulative_pnl: number;
+  trade_pnl: number;
+  date: string;
+}
+
+export interface BacktestAnalytics {
+  backtest_id: string;
+  pnl_curve: PnlCurvePoint[];
+  by_strategy: Record<string, { trades: number; wins: number; pnl: number; win_rate: number }>;
+  by_layer: Record<string, { trades: number; wins: number; pnl: number; win_rate: number }>;
+  monthly_pnl: Record<string, number>;
+}
+
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -283,4 +357,11 @@ export const api = {
   schedulerStatus: () => fetchAPI<SchedulerStatus>('/api/v1/settings/scheduler'),
   triggerScan: () => fetchAPI<{ status: string; message: string }>('/api/v1/settings/scheduler/trigger', { method: 'POST' }),
   ivTermStructure: (ticker: string) => fetchAPI<IVTermStructure>(`/api/v1/candidates/${ticker}/iv-term-structure`),
+  // Backtesting
+  createBacktest: (body: { name: string; strategy_filter?: string; min_score?: number; start_date?: string; end_date?: string }) =>
+    fetchAPI<BacktestDetail>('/api/v1/backtests', { method: 'POST', body: JSON.stringify(body) }),
+  listBacktests: () => fetchAPI<BacktestListResponse>('/api/v1/backtests'),
+  getBacktest: (id: string) => fetchAPI<BacktestDetail>(`/api/v1/backtests/${id}`),
+  getBacktestAnalytics: (id: string) => fetchAPI<BacktestAnalytics>(`/api/v1/backtests/${id}/analytics`),
+  deleteBacktest: (id: string) => fetchAPI<void>(`/api/v1/backtests/${id}`, { method: 'DELETE' }),
 };

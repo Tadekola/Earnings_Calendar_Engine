@@ -1,4 +1,5 @@
 from app.models.audit import AuditLog, RejectionLog, SystemHealthSnapshot
+from app.models.backtest import Backtest, BacktestTrade
 from app.models.earnings import EarningsEvent
 from app.models.market_data import Price, VolatilityMetric
 from app.models.options import OptionSnapshot
@@ -22,4 +23,6 @@ __all__ = [
     "AuditLog",
     "SystemHealthSnapshot",
     "AppSetting",
+    "Backtest",
+    "BacktestTrade",
 ]
