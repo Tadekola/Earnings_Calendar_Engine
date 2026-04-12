@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import Providers from "@/components/Providers";
 import Sidebar from "@/components/Sidebar";
 import "./globals.css";
@@ -38,6 +39,13 @@ export default function RootLayout({
             </main>
           </div>
         </Providers>
+        <Toaster
+          theme="dark"
+          position="bottom-right"
+          richColors
+          closeButton
+          toastOptions={{ duration: 5000 }}
+        />
       </body>
     </html>
   );

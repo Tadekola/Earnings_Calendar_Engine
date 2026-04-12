@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { api, RecommendedTrade } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, classificationVariant } from "@/components/ui/badge";
@@ -40,8 +41,10 @@ export default function TradesPage() {
     try {
       const result = await api.recommendedTrade(t);
       setTrade(result);
+      toast.success(`Trade built for ${t} — ${result.strategy_type || "Double Calendar"}`);
     } catch (err: any) {
       setError(err.message);
+      toast.error(`Trade build failed: ${err.message}`);
     } finally {
       setLoading(false);
     }

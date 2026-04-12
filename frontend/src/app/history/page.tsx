@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api, DashboardSummary } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,34 +17,19 @@ import {
 } from "lucide-react";
 
 export default function HistoryPage() {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [scanResults, setScanResults] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: summary } = useQuery({
+    queryKey: ["dashboard-summary"],
+    queryFn: () => api.dashboardSummary(),
+    staleTime: 15_000,
+  });
 
-  useEffect(() => {
-    loadHistory();
-  }, []);
+  const { data: scanResults = [], isLoading: loading, error: queryError } = useQuery({
+    queryKey: ["scan-results"],
+    queryFn: () => api.scanResults(),
+    staleTime: 15_000,
+  });
 
-  async function loadHistory() {
-    setLoading(true);
-    setError(null);
-    try {
-      const [summaryData, resultsData] = await Promise.allSettled([
-        api.dashboardSummary(),
-        api.scanResults(),
-      ]);
-      if (summaryData.status === "fulfilled") setSummary(summaryData.value);
-      if (resultsData.status === "fulfilled") setScanResults(resultsData.value);
-      if (summaryData.status === "rejected" && resultsData.status === "rejected") {
-        setError("Failed to load scan history");
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const error = queryError ? (queryError as Error).message : null;
 
   if (loading) {
     return (

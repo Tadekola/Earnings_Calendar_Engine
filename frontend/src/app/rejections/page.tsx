@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,24 +26,13 @@ interface RejectionsData {
 }
 
 export default function RejectionsPage() {
-  const [data, setData] = useState<RejectionsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading: loading, error: queryError, refetch } = useQuery<RejectionsData>({
+    queryKey: ["rejections"],
+    queryFn: () => api.rejections(),
+    staleTime: 15_000,
+  });
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await api.rejections();
-      setData(result);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); }, []);
+  const error = queryError ? (queryError as Error).message : null;
 
   if (loading) {
     return (
@@ -63,7 +52,7 @@ export default function RejectionsPage() {
             Understand why names were rejected — builds trust and aids debugging
           </p>
         </div>
-        <Button onClick={load} disabled={loading} variant="secondary">
+        <Button onClick={() => refetch()} disabled={loading} variant="secondary">
           <RefreshCw className="h-4 w-4" /> Refresh
         </Button>
       </div>

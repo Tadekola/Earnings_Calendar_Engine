@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { api, ScanRunResponse, ScanResult } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, classificationVariant } from "@/components/ui/badge";
@@ -39,8 +40,10 @@ export default function ScanResultsPage() {
     try {
       const result = await api.runScan();
       setScanRun(result);
+      toast.success(`Scan complete — ${result.total_scanned} scanned, ${result.total_recommended} recommended`);
     } catch (err: any) {
       setError(err.message);
+      toast.error(`Scan failed: ${err.message}`);
     } finally {
       setLoading(false);
     }

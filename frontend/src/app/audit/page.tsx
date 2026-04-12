@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api, AuditEntry } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,25 +8,13 @@ import { CardSkeleton } from "@/components/ui/skeleton";
 import { ClipboardList } from "lucide-react";
 
 export default function AuditPage() {
-  const [entries, setEntries] = useState<AuditEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: entries = [], isLoading: loading, error: queryError } = useQuery<AuditEntry[]>({
+    queryKey: ["audit-log"],
+    queryFn: () => api.auditLog(),
+    staleTime: 15_000,
+  });
 
-  useEffect(() => {
-    loadAudit();
-  }, []);
-
-  async function loadAudit() {
-    setLoading(true);
-    try {
-      const data = await api.auditLog();
-      setEntries(data);
-    } catch (err: any) {
-      setError(err.message || "Failed to load audit log");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const error = queryError ? (queryError as Error).message : null;
 
   function parsePayload(payload: string | null): Record<string, any> | null {
     if (!payload) return null;

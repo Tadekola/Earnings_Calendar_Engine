@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   api,
-  DashboardSummary,
-  HealthResponse,
   ScanRunResponse,
-  UpcomingEarningsResponse,
 } from "@/lib/api";
-import { useToast } from "@/components/Toast";
 import { useScanProgress, ScanCompleteEvent, ScanErrorEvent } from "@/lib/useScanProgress";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge, classificationVariant, severityVariant, confidenceVariant } from "@/components/ui/badge";
@@ -32,27 +30,38 @@ import {
 } from "lucide-react";
 
 export default function Dashboard() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [earnings, setEarnings] = useState<UpcomingEarningsResponse | null>(null);
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const queryClient = useQueryClient();
   const [scanResult, setScanResult] = useState<ScanRunResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
+
+  const { data: health } = useQuery({
+    queryKey: ["health"],
+    queryFn: () => api.health(),
+    refetchInterval: 30_000,
+  });
+
+  const { data: earnings } = useQuery({
+    queryKey: ["earnings"],
+    queryFn: () => api.upcomingEarnings(),
+    staleTime: 60_000,
+  });
+
+  const { data: summary, isLoading: loading } = useQuery({
+    queryKey: ["dashboard-summary"],
+    queryFn: () => api.dashboardSummary(),
+    staleTime: 15_000,
+  });
 
   const progress = useScanProgress(
     async (e: ScanCompleteEvent) => {
       setScanResult(null);
       setScanning(false);
       progress.disconnect();
-      toast(`Scan complete — ${e.total_recommended} recommended, ${e.total_watchlist} watchlist`, "success");
+      toast.success(`Scan complete — ${e.total_recommended} recommended, ${e.total_watchlist} watchlist`);
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
       try {
-        const [s, result] = await Promise.all([
-          api.dashboardSummary(),
-          api.getScanRun(e.run_id),
-        ]);
-        setSummary(s);
+        const result = await api.getScanRun(e.run_id);
         setScanResult(result);
       } catch {}
     },
@@ -60,32 +69,9 @@ export default function Dashboard() {
       setScanning(false);
       progress.disconnect();
       setError(e.error || "Scan failed");
-      toast(e.error || "Scan failed", "error");
+      toast.error(e.error || "Scan failed");
     },
   );
-
-  useEffect(() => {
-    loadDashboard();
-  }, []);
-
-  async function loadDashboard() {
-    setLoading(true);
-    setError(null);
-    try {
-      const [h, e, s] = await Promise.allSettled([
-        api.health(),
-        api.upcomingEarnings(),
-        api.dashboardSummary(),
-      ]);
-      if (h.status === "fulfilled") setHealth(h.value);
-      if (e.status === "fulfilled") setEarnings(e.value);
-      if (s.status === "fulfilled") setSummary(s.value);
-    } catch (err: any) {
-      setError(err.message || "Failed to load dashboard data");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function runScan() {
     setScanning(true);
@@ -98,7 +84,7 @@ export default function Dashboard() {
       setScanning(false);
       progress.disconnect();
       setError(err.message || "Scan failed");
-      toast(err.message || "Scan failed", "error");
+      toast.error(err.message || "Scan failed");
     }
   }
 

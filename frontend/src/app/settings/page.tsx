@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { api, AppSettings, SchedulerStatus } from "@/lib/api";
 
 export default function SettingsPage() {
@@ -46,8 +47,10 @@ export default function SettingsPage() {
       setEditMode(false);
       setSuccess("Settings saved successfully");
       setTimeout(() => setSuccess(null), 3000);
+      toast.success("Settings saved successfully");
     } catch (err: any) {
       setError(err.message);
+      toast.error(`Failed to save settings: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -57,8 +60,10 @@ export default function SettingsPage() {
     setTriggering(true);
     try {
       await api.triggerScan();
+      toast.info("Scheduled scan triggered");
     } catch (err: any) {
       setError(err.message);
+      toast.error(`Trigger failed: ${err.message}`);
     } finally {
       setTriggering(false);
     }

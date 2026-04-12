@@ -205,6 +205,20 @@ export interface SchedulerStatus {
   jobs: SchedulerJob[];
 }
 
+export interface IVPoint {
+  expiration: string;
+  days_to_expiry: number;
+  atm_iv: number;
+  call_iv: number | null;
+  put_iv: number | null;
+}
+
+export interface IVTermStructure {
+  ticker: string;
+  spot_price: number;
+  points: IVPoint[];
+}
+
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -268,4 +282,5 @@ export const api = {
     `${API_BASE}/api/v1/export/scores/csv${runId ? `?run_id=${runId}` : ''}`,
   schedulerStatus: () => fetchAPI<SchedulerStatus>('/api/v1/settings/scheduler'),
   triggerScan: () => fetchAPI<{ status: string; message: string }>('/api/v1/settings/scheduler/trigger', { method: 'POST' }),
+  ivTermStructure: (ticker: string) => fetchAPI<IVTermStructure>(`/api/v1/candidates/${ticker}/iv-term-structure`),
 };

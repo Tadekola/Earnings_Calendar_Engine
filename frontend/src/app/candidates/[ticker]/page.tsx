@@ -1,19 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
-import { api, ExplainResponse, RecommendedTrade } from "@/lib/api";
+import { api, ExplainResponse, RecommendedTrade, IVTermStructure } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, classificationVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardSkeleton, KPICardSkeleton } from "@/components/ui/skeleton";
 import PayoffDiagram from "@/components/charts/PayoffDiagram";
+import IVTermStructureChart from "@/components/charts/IVTermStructure";
 import GreeksSummary from "@/components/GreeksSummary";
 import {
   ArrowRight,
   AlertTriangle,
   Info,
   DollarSign,
+  TrendingUp,
 } from "lucide-react";
 
 function scoreColor(score: number) {
@@ -25,37 +28,31 @@ function scoreColor(score: number) {
 export default function CandidateDetailPage() {
   const params = useParams();
   const ticker = (params.ticker as string)?.toUpperCase() || "";
-
-  const [explain, setExplain] = useState<ExplainResponse | null>(null);
-  const [trade, setTrade] = useState<RecommendedTrade | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedStrategy, setSelectedStrategy] = useState<string>("DOUBLE_CALENDAR");
 
-  useEffect(() => {
-    if (!ticker) return;
-    loadData(selectedStrategy);
-  }, [ticker, selectedStrategy]);
+  const { data: explain, isLoading: explainLoading } = useQuery<ExplainResponse>({
+    queryKey: ["explain", ticker, selectedStrategy],
+    queryFn: () => api.explain(ticker, selectedStrategy),
+    enabled: !!ticker,
+    staleTime: 30_000,
+  });
 
-  async function loadData(strategy: string) {
-    setLoading(true);
-    setError(null);
-    try {
-      const [explainData, tradeData] = await Promise.allSettled([
-        api.explain(ticker, strategy),
-        api.recommendedTrade(ticker, strategy),
-      ]);
-      if (explainData.status === "fulfilled") setExplain(explainData.value);
-      if (tradeData.status === "fulfilled") setTrade(tradeData.value);
-      if (explainData.status === "rejected" && tradeData.status === "rejected") {
-        setError(explainData.reason?.message || "Failed to load data");
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const { data: trade } = useQuery<RecommendedTrade>({
+    queryKey: ["trade", ticker, selectedStrategy],
+    queryFn: () => api.recommendedTrade(ticker, selectedStrategy),
+    enabled: !!ticker,
+    staleTime: 30_000,
+  });
+
+  const { data: ivData } = useQuery<IVTermStructure>({
+    queryKey: ["iv-term-structure", ticker],
+    queryFn: () => api.ivTermStructure(ticker),
+    enabled: !!ticker,
+    staleTime: 60_000,
+  });
+
+  const loading = explainLoading;
+  const error = null;
 
   if (loading) {
     return (
@@ -178,6 +175,21 @@ export default function CandidateDetailPage() {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* IV Term Structure */}
+      {ivData && ivData.points.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-indigo-500" />
+              <CardTitle>IV Term Structure</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <IVTermStructureChart points={ivData.points} spotPrice={ivData.spot_price} />
           </CardContent>
         </Card>
       )}
