@@ -124,7 +124,7 @@ RECOMMEND  WATCHLIST   NO_TRADE
 | **Data Providers** | FMP (earnings + prices), Tradier (options chains + Greeks) |
 | **Volatility Engine** | Computed from historical price data (RV10, RV20, RV30, ATR) |
 | **Scheduling** | APScheduler (daily pre-market + evening post-market scans) |
-| **Frontend** | Next.js 14, TypeScript, Tailwind CSS |
+| **Frontend** | Next.js 14, TypeScript, Tailwind CSS, shadcn/ui, Lucide React, Recharts |
 | **Real-time** | WebSocket scan progress streaming |
 | **Logging** | structlog (structured JSON), full audit trail |
 | **Testing** | pytest, pytest-asyncio (117 tests) |
@@ -140,7 +140,8 @@ RECOMMEND  WATCHLIST   NO_TRADE
 - **4-Leg Trade Builder** — Automatic optimal strike and expiration selection for double calendar construction
 - **Full Explainability** — Every recommendation includes factor-by-factor rationale, rejection reasons, and audit logs
 - **Real-time Progress** — WebSocket streaming of scan progress with per-ticker classification
-- **8 Frontend Pages** — Dashboard, Scan Results, Scan History, Trade Builder, Candidate Detail, Rejections, Audit Trail, Settings
+- **9 Frontend Pages** — Dashboard, Scan Results, Scan History, Trade Builder, Candidate Detail, Rejections, Audit Trail, Settings
+- **Wall Street UI** — shadcn/ui components, Lucide icons, P&L payoff diagrams, score distribution charts, Greeks summary, loading skeletons
 - **Editable Settings** — All thresholds (earnings window, liquidity minimums, scoring weights) configurable at runtime
 - **Audit Trail** — Every setting change, scan run, and data fetch is logged with timestamps and actor
 - **CSV Export** — Export scans, candidates, and scores to CSV
@@ -179,8 +180,10 @@ Earnings_Calendar_Engine/
 │   └── tests/                    # 117 pytest tests across 14 files
 ├── frontend/
 │   └── src/
-│       ├── app/                  # 7 Next.js pages
-│       ├── components/           # Toast, Providers, shared UI
+│       ├── app/                  # 9 Next.js pages
+│       ├── components/           # shadcn/ui (Card, Badge, Button, Skeleton, Tooltip),
+│       │                          #   charts (PayoffDiagram, ScoreDistribution),
+│       │                          #   GreeksSummary, Sidebar
 │       └── lib/                  # api.ts client, useScanProgress WebSocket hook
 ├── docker-compose.yml
 ├── .env.template
