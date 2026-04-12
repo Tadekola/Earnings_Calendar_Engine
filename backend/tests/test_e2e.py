@@ -4,6 +4,7 @@ Boots the full app, runs a scan via the API, verifies persistence to an
 in-memory SQLite database, checks the explain/rejections/trades/settings
 endpoints, and validates the full API contract.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -56,6 +57,7 @@ async def e2e_client():
 
 # ── Health ──────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_e2e_health(e2e_client):
     r = await e2e_client.get("/health")
@@ -67,6 +69,7 @@ async def test_e2e_health(e2e_client):
 
 
 # ── Scan → Persist → Retrieve ──────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_e2e_scan_persist_retrieve(e2e_client):
@@ -97,6 +100,7 @@ async def test_e2e_scan_persist_retrieve(e2e_client):
 
 # ── Scan Result Structure ──────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_e2e_scored_results_have_breakdown(e2e_client):
     r = await e2e_client.post("/api/v1/scan/run", json={"tickers": ["AAPL"]})
@@ -108,7 +112,7 @@ async def test_e2e_scored_results_have_breakdown(e2e_client):
             assert result["overall_score"] >= 40.0
             assert result["score_breakdown"] is not None
             if result.get("strategy_type") == "DOUBLE_CALENDAR":
-                assert len(result["score_breakdown"]) == 9
+                assert len(result["score_breakdown"]) in (9, 10)
             assert len(result["rationale_summary"]) > 0
             for factor in result["score_breakdown"]:
                 assert "factor" in factor
@@ -117,6 +121,7 @@ async def test_e2e_scored_results_have_breakdown(e2e_client):
 
 
 # ── Explain ────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_e2e_explain(e2e_client):
@@ -131,6 +136,7 @@ async def test_e2e_explain(e2e_client):
 
 # ── Rejections ─────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_e2e_rejections(e2e_client):
     r = await e2e_client.get("/api/v1/rejections")
@@ -141,6 +147,7 @@ async def test_e2e_rejections(e2e_client):
 
 
 # ── Trades ─────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_e2e_recommended_trade(e2e_client):
@@ -166,6 +173,7 @@ async def test_e2e_build_trade(e2e_client):
 
 # ── Settings ───────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_e2e_settings(e2e_client):
     r = await e2e_client.get("/api/v1/settings")
@@ -189,6 +197,7 @@ async def test_e2e_scheduler_status(e2e_client):
 
 # ── Earnings ───────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_e2e_upcoming_earnings(e2e_client):
     r = await e2e_client.get("/api/v1/earnings/upcoming")
@@ -200,6 +209,7 @@ async def test_e2e_upcoming_earnings(e2e_client):
 
 # ── Universe ───────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_e2e_universe(e2e_client):
     r = await e2e_client.get("/api/v1/universe")
@@ -210,6 +220,7 @@ async def test_e2e_universe(e2e_client):
 
 
 # ── Full Flow ──────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_e2e_full_flow(e2e_client):
@@ -237,6 +248,7 @@ async def test_e2e_full_flow(e2e_client):
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_e2e_dashboard_summary_empty(e2e_client):

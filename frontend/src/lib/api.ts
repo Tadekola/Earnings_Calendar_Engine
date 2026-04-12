@@ -57,6 +57,8 @@ export interface ScanResult {
   risk_warnings: string[] | null;
   processing_time_ms: number | null;
   strategy_type?: string;
+  layer_id?: string;
+  account_id?: string;
 }
 
 export interface ScanRunResponse {
@@ -111,6 +113,8 @@ export interface RecommendedTrade {
   key_risks: string[];
   risk_disclaimer: string;
   strategy_type?: string;
+  layer_id?: string;
+  account_id?: string;
   legs: TradeLeg[];
 }
 

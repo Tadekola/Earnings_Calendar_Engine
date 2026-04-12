@@ -31,6 +31,8 @@ class ScanResultResponse(BaseModel):
     risk_warnings: list[str] | None = None
     processing_time_ms: int | None = None
     strategy_type: str | None = None
+    layer_id: str | None = None
+    account_id: str | None = None
 
 
 class ScanRunResponse(BaseModel):

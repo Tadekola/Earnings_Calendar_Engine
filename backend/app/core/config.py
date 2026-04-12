@@ -115,7 +115,9 @@ class EarningsWindowSettings(BaseSettings):
 
 
 class SP500PreFilterSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="PREFILTER_", env_file=str(ENV_FILE), extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="PREFILTER_", env_file=str(ENV_FILE), extra="ignore"
+    )
 
     ENABLED: bool = True
     MIN_STOCK_PRICE: float = 100.0
@@ -167,9 +169,26 @@ class Settings(BaseSettings):
     prefilter: SP500PreFilterSettings = SP500PreFilterSettings()
 
     DEFAULT_UNIVERSE: list[str] = [
-        "SPY", "QQQ", "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL",
-        "TSLA", "AMD", "NFLX", "JPM", "BAC", "XOM", "CVX", "UNH",
-        "COST", "AVGO", "PLTR",
+        "SPY",
+        "QQQ",
+        "XSP",
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "AMZN",
+        "META",
+        "GOOGL",
+        "TSLA",
+        "AMD",
+        "NFLX",
+        "JPM",
+        "BAC",
+        "XOM",
+        "CVX",
+        "UNH",
+        "COST",
+        "AVGO",
+        "PLTR",
     ]
 
 

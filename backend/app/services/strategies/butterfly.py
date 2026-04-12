@@ -21,19 +21,24 @@ class ButterflyStrategy(BaseOptionsStrategy):
     """
     Long Butterfly options strategy.
     Designed for extremely high IV environments to capture massive IV crush.
-    Structure: 1 Long Put (Lower Wing), 2 Short Puts (ATM Body), 1 Long Put (Upper Wing) 
+    Structure: 1 Long Put (Lower Wing), 2 Short Puts (ATM Body), 1 Long Put (Upper Wing)
     or All Calls. Here we will use an All-Put or All-Call structure (Iron Butterfly).
-    Wait, the prompt says: "Structure: 4-leg (2 Long, 2 Short) using the same expiration (Front-month/Weekly)."
+    Structure: 4-leg (2 Long, 2 Short) using the same expiration
+    (Front-month/Weekly).
     Let's build an Iron Butterfly (Short ATM Straddle + Long OTM Strangle) for best liquidity.
     """
 
-    def __init__(self, settings: Settings, registry) -> None:
+    def __init__(
+        self, settings: Settings, registry, offset: float = 0.0, strategy_id: str = "BUTTERFLY"
+    ) -> None:
         super().__init__(settings, registry)
         self._liquidity = LiquidityEngine(settings.liquidity)
+        self.offset = offset
+        self._strategy_id = strategy_id
 
     @property
     def strategy_type(self) -> str:
-        return "BUTTERFLY"
+        return self._strategy_id
 
     def validate_liquidity(
         self,
@@ -48,7 +53,7 @@ class ButterflyStrategy(BaseOptionsStrategy):
     def calculate_score(
         self,
         ticker: str,
-        earnings: EarningsRecord,
+        earnings: EarningsRecord | None,
         price: PriceRecord,
         vol: VolatilitySnapshot,
         chain: OptionsChainSnapshot,
@@ -58,99 +63,105 @@ class ButterflyStrategy(BaseOptionsStrategy):
         factors: list[ScoreFactor] = []
         warnings: list[str] = []
 
-        # 1. IV Percentile (35%): Reward IVP > 80
-        ivp = vol.iv_percentile or 0.0
-        ivp_score = min(100.0, max(0.0, (ivp - 0.4) * 200)) if ivp > 0.4 else 0.0
-        if ivp > 0.8:
-            ivp_score = 100.0
+        # 1. IV Percentile (35%): Reward IVP > 80%
+        # iv_percentile is 0.0–1.0, convert to percentage
+        ivp_raw = vol.iv_percentile or 0.5
+        ivp = ivp_raw * 100
+        iv_score = 100.0 if ivp > 80 else (60.0 if ivp > 60 else 20.0)
+        factors.append(
+            ScoreFactor(
+                name="Implied Volatility Percentile",
+                weight=35.0,
+                raw_score=iv_score,
+                weighted_score=iv_score * 0.35,
+                rationale=(
+                    f"IV Percentile is {ivp:.1f}%."
+                    " High IVP is required for Iron Butterfly."
+                ),
+            )
+        )
 
-        factors.append(ScoreFactor(
-            name="IV Percentile",
-            weight=35.0,
-            raw_score=ivp_score,
-            weighted_score=ivp_score * 0.35,
-            rationale=f"IV Percentile is {ivp*100:.1f}% (>80% is optimal for Butterflies)."
-        ))
+        # 2. Term Structure (25%): Reward Backwardation
+        slope = vol.term_structure_slope or 0.0
+        slope_score = 100.0 if slope < -0.10 else (70.0 if slope < 0.0 else 30.0)
+        factors.append(
+            ScoreFactor(
+                name="Volatility Term Structure",
+                weight=25.0,
+                raw_score=slope_score,
+                weighted_score=slope_score * 0.25,
+                rationale=f"Term structure slope is {slope:.3f}. Backwardation preferred.",
+            )
+        )
 
-        # We will need the actual trade to calculate Risk/Reward.
-        # But `calculate_score` doesn't get the trade object.
-        # For now, we will add a placeholder for R/R that gets updated later, or estimate it.
-        # Actually, the base class calculates score BEFORE trade build in the current pipeline.
-        # Wait, the prompt says "Risk/Reward (25%): Minimum requirement 1:4". We can't know the exact R/R until trade is built!
-        # I'll calculate an estimated R/R based on Greeks/Volatility, or we can just build the trade inside `calculate_score` if we really have to.
-
-        # 3. Residual Value Risk (Penalize gap risk)
-        # Using ATR as a proxy for gap risk
-        atr = vol.atr_14d or 0.0
-        gap_risk = (atr / price.close) if price.close > 0 else 0.0
-        gap_score = 100.0 - min(100.0, gap_risk * 1000) # High gap risk = low score
-
-        factors.append(ScoreFactor(
-            name="Residual Gap Risk",
-            weight=40.0,  # taking the remaining weight
-            raw_score=gap_score,
-            weighted_score=gap_score * 0.40,
-            rationale=f"ATR to price ratio is {gap_risk*100:.1f}%. High gap risk penalizes butterflies."
-        ))
+        # 3. Gap Risk (40%): Penalize high ATR/Price ratio
+        spot = price.close
+        gap_risk = (vol.atr_14d or 0.0) / spot if spot > 0 else 0.0
+        gap_score = 100.0 if gap_risk < 0.03 else (60.0 if gap_risk < 0.06 else 10.0)
+        factors.append(
+            ScoreFactor(
+                name="Residual Gap Risk",
+                weight=40.0,  # taking the remaining weight
+                raw_score=gap_score,
+                weighted_score=gap_score * 0.40,
+                rationale=(
+                    f"ATR to price ratio is {gap_risk*100:.1f}%."
+                    " High gap risk penalizes butterflies."
+                ),
+            )
+        )
 
         # Estimate Risk/Reward for the scan pipeline
         spot = price.close
-        days_to = (earnings.earnings_date - date.today()).days
+        days_to = (earnings.earnings_date - date.today()).days if earnings else 0
+
         front_iv = vol.front_expiry_iv or 0.25
-        estimated_move = spot * front_iv * (days_to / 365) ** 0.5
+        # Floor at 1 day to avoid zero-width butterfly at DTE=0
+        dte_for_move = max(days_to, 1)
+        estimated_move = spot * front_iv * (dte_for_move / 365) ** 0.5
+
+        target_spot = spot * (1.0 + self.offset)
 
         expirations = sorted(chain.expirations)
-        front_exp = self._select_short_expiry(expirations, earnings.earnings_date)
-        body_strike = self._snap_strike(spot, chain, front_exp)
-        lower_wing = self._snap_strike(spot - estimated_move, chain, front_exp)
-        upper_wing = self._snap_strike(spot + estimated_move, chain, front_exp)
+        front_exp = self._select_short_expiry(
+            expirations, earnings.earnings_date if earnings else date.today() + timedelta(days=1)
+        )
+        body_strike = self._snap_strike(target_spot, chain, front_exp)
+        lower_wing = self._snap_strike(body_strike - estimated_move, chain, front_exp)
+        upper_wing = self._snap_strike(body_strike + estimated_move, chain, front_exp)
 
         legs = self._build_legs(ticker, lower_wing, body_strike, upper_wing, front_exp, chain)
-        total_debit = sum(l.debit for l in legs)
+        total_debit = sum(leg.debit for leg in legs)
         net_credit = abs(total_debit) if total_debit < 0 else 0.0
         spread_width = body_strike - lower_wing
         max_loss = max(0.0, spread_width - net_credit)
         reward_to_risk = net_credit / max_loss if max_loss > 0 else 0
-        rr_score = min(100.0, (reward_to_risk / 4.0) * 100.0)
 
-        factors.append(ScoreFactor(
-            name="Risk/Reward",
-            weight=25.0,
-            raw_score=rr_score,
-            weighted_score=rr_score * 0.25,
-            rationale=f"Estimated Max Loss: ${max_loss:.2f}, Credit: ${net_credit:.2f}. "
-                      f"R/R is 1:{reward_to_risk:.1f} (target 1:4)."
-        ))
+        # R/R Bonus or Penalty
+        if reward_to_risk > 2.0:
+            overall_score = sum(f.weighted_score for f in factors) + 10.0
+            rationale_bonus = " (Excellent Risk/Reward > 2:1)"
+        elif reward_to_risk < 1.0:
+            overall_score = sum(f.weighted_score for f in factors) - 20.0
+            rationale_bonus = " (Poor Risk/Reward < 1:1)"
+        else:
+            overall_score = sum(f.weighted_score for f in factors)
+            rationale_bonus = ""
 
-        # Regime Filter Bonus
-        ivp = vol.iv_percentile or 0.0
-        high_absolute_iv = (ivp > 0.8) # proxy for 52-wk high
+        overall_score = max(0.0, min(100.0, overall_score))
 
-        bonus_rationale = ""
-        if high_absolute_iv:
-            factors.append(ScoreFactor(
-                name="Regime Filter",
-                weight=10.0,
-                raw_score=100.0,
-                weighted_score=10.0,
-                rationale="High Absolute IV regime detected. +10 bonus for Butterfly."
-            ))
-            bonus_rationale = " (+10 bonus for High Absolute IV regime)"
-
-        overall_score = min(100.0, sum(f.weighted_score for f in factors))
-        classification = RecommendationClass.NO_TRADE
-        if overall_score >= self._settings.scoring.RECOMMEND_THRESHOLD:
+        if overall_score >= 80.0:
             classification = RecommendationClass.RECOMMEND
-        elif overall_score >= self._settings.scoring.WATCHLIST_THRESHOLD:
+        elif overall_score >= 65.0:
             classification = RecommendationClass.WATCHLIST
+        else:
+            classification = RecommendationClass.NO_TRADE
 
-        warnings = []
-        if not liquidity.passed:
-            warnings.append(f"Liquidity rejected: {'; '.join(liquidity.rejection_reasons)}")
-        if gap_risk > 0.10:
-            warnings.append(f"High Gap Risk: estimated expected move {gap_risk*100:.1f}% exceeds typical spread width.")
-
-        rationale = f"Butterfly Score: {overall_score:.1f}/100. {bonus_rationale}"
+        rationale = (
+            f"Iron Butterfly Setup: IVP={ivp:.1f}%, Slope={slope:.3f}. "
+            f"Estimated Net Credit: ${net_credit:.2f}, Max Risk: ${max_loss:.2f}. "
+            f"R/R: {reward_to_risk:.2f}{rationale_bonus}."
+        )
 
         return ScoringResult(
             ticker=ticker,
@@ -158,13 +169,13 @@ class ButterflyStrategy(BaseOptionsStrategy):
             classification=classification,
             factors=factors,
             risk_warnings=warnings,
-            rationale_summary=rationale
+            rationale_summary=rationale,
         )
 
     def build_trade_structure(
         self,
         ticker: str,
-        earnings: EarningsRecord,
+        earnings: EarningsRecord | None,
         price: PriceRecord,
         vol: VolatilitySnapshot,
         chain: OptionsChainSnapshot,
@@ -173,63 +184,76 @@ class ButterflyStrategy(BaseOptionsStrategy):
         override_short_exp: date | None = None,
         override_long_exp: date | None = None,
     ) -> ConstructedTrade:
-        spot = price.close
+        spot = chain.spot_price or price.close
         today = date.today()
-        days_to = (earnings.earnings_date - today).days
-        exit_date = earnings.earnings_date - timedelta(
-            days=self._settings.earnings_window.EXIT_DAYS_BEFORE_EARNINGS
-        )
+
+        # Step 1: Select Expiry (Butterfly only uses front expiry)
+        earnings_date = earnings.earnings_date if earnings else today + timedelta(days=1)
+        days_to = (earnings_date - today).days
 
         expirations = sorted(chain.expirations)
         # Butterfly uses the exact SAME expiration for all 4 legs
-        front_exp = override_short_exp or self._select_short_expiry(expirations, earnings.earnings_date)
+        front_exp = override_short_exp or self._select_short_expiry(expirations, earnings_date)
 
         front_iv = vol.front_expiry_iv or 0.25
-        estimated_move = spot * front_iv * (days_to / 365) ** 0.5
+        # Floor at 1 day to avoid zero-width butterfly at DTE=0
+        dte_for_move = max(days_to, 1)
+        estimated_move = spot * front_iv * (dte_for_move / 365) ** 0.5
 
-        # Body at ATM
-        body_strike = self._snap_strike(spot, chain, front_exp)
+        # Apply offset to the Spot target
+        target_spot = spot * (1.0 + self.offset)
 
-        # Wings at +/- 1.0 x Expected Move
-        lower_wing = override_lower or self._snap_strike(spot - estimated_move, chain, front_exp)
-        upper_wing = override_upper or self._snap_strike(spot + estimated_move, chain, front_exp)
+        # Body at Target Spot
+        body_strike = self._snap_strike(target_spot, chain, front_exp)
 
-        # Iron Butterfly structure:
-        # Leg 1: Long Put (Lower Wing)
-        # Leg 2: Short Put (ATM Body)
-        # Leg 3: Short Call (ATM Body)
-        # Leg 4: Long Call (Upper Wing)
+        # Wings symmetrically distributed based on estimated move
+        lower_wing = override_lower or self._snap_strike(
+            body_strike - estimated_move, chain, front_exp
+        )
+        upper_wing = override_upper or self._snap_strike(
+            body_strike + estimated_move, chain, front_exp
+        )
+
+        # Guardrail: if wings collapsed to body strike, force outward
+        if lower_wing >= body_strike or upper_wing <= body_strike:
+            exp_strikes = sorted(
+                {o.strike for o in chain.options if o.expiration == front_exp}
+            )
+            body_idx = None
+            for i, s in enumerate(exp_strikes):
+                if s == body_strike:
+                    body_idx = i
+                    break
+            if body_idx is not None:
+                if body_idx > 0:
+                    lower_wing = exp_strikes[body_idx - 1]
+                if body_idx < len(exp_strikes) - 1:
+                    upper_wing = exp_strikes[body_idx + 1]
+
+        # Enforce exact symmetry for a standard Iron Butterfly
+        lower_diff = body_strike - lower_wing
+        upper_diff = upper_wing - body_strike
+        if lower_diff != upper_diff:
+            # Re-snap the upper wing to match the lower wing width exactly
+            target_upper = body_strike + lower_diff
+            upper_wing = self._snap_strike(target_upper, chain, front_exp)
+
         legs = self._build_legs(ticker, lower_wing, body_strike, upper_wing, front_exp, chain)
 
-        total_debit = sum(l.debit for l in legs)
+        total_debit = sum(leg.debit for leg in legs)
         total_debit_pessimistic = self._pessimistic_debit(legs)
 
-        # Iron Butterfly is a credit spread. total_debit will be negative.
-        net_credit = abs(total_debit) if total_debit < 0 else 0.0
-
-        # Spread width is the distance between body and wings (assuming symmetric)
         spread_width = body_strike - lower_wing
-
-        # Max Loss = Spread Width - Net Credit
-        max_loss = max(0.0, spread_width - net_credit)
-
-        # Max Profit = Net Credit
+        net_credit = abs(total_debit) if total_debit < 0 else 0.0
+        max_loss = spread_width - net_credit
         max_profit = net_credit
 
-        # Risk/Reward Ratio calculation: we want R:R of 1:4 (risk 1 to make 4)
-        # So reward_to_risk = max_profit / max_loss
-        reward_to_risk = max_profit / max_loss if max_loss > 0 else 0
-
-        # We already have Risk/Reward calculated in calculate_score, so we just run it:
         full_liq = self.validate_liquidity(price, chain, front_exp, front_exp)
         base_score = self.calculate_score(ticker, earnings, price, vol, chain, full_liq)
 
-        # Recalculate overall (should match base_score.overall_score)
-        if base_score.overall_score >= 80:
-            base_score.classification = RecommendationClass.RECOMMEND
-        elif base_score.overall_score >= 65:
-            base_score.classification = RecommendationClass.WATCHLIST
-        else:
+        # Hard Stop for bad Iron Butterfly Risk/Reward
+        if max_loss > 0 and (net_credit / max_loss) < 1.0:
+            base_score.overall_score = min(base_score.overall_score, 60.0)
             base_score.classification = RecommendationClass.NO_TRADE
 
         gap_risk = (vol.atr_14d or 0.0) / spot if spot > 0 else 0.0
@@ -240,21 +264,46 @@ class ButterflyStrategy(BaseOptionsStrategy):
             "High pin risk if stock lands exactly on body strike",
         ]
 
-        if gap_risk > 0.10:
-            key_risks.append(f"High Risk: Average true range > 10% ({gap_risk*100:.1f}%). Highly susceptible to gap-overs.")
+        if earnings and earnings.confidence != "CONFIRMED":
+            key_risks.insert(0, f"Earnings date is {earnings.confidence} — high change risk")
 
-        rationale = self.generate_rationale(ticker, days_to, lower_wing, body_strike, upper_wing, front_exp, total_debit, exit_date, base_score.overall_score)
+        if gap_risk > 0.10:
+            key_risks.append(
+                f"High Risk: Average true range > 10% "
+                f"({gap_risk*100:.1f}%). Highly susceptible to gap-overs."
+            )
+
+        exit_date = earnings_date - timedelta(days=1)
+        if earnings and earnings.report_timing == "BEFORE_OPEN":
+            exit_date = earnings_date - timedelta(days=1)
+        elif earnings and earnings.report_timing == "AFTER_CLOSE":
+            exit_date = earnings_date
+
+        if exit_date < today:
+            exit_date = today
+
+        rationale = self.generate_rationale(
+            ticker,
+            days_to,
+            lower_wing,
+            body_strike,
+            upper_wing,
+            front_exp,
+            total_debit,
+            exit_date,
+            base_score.overall_score,
+        )
 
         return ConstructedTrade(
             ticker=ticker,
             spot_price=spot,
-            earnings_date=earnings.earnings_date,
-            earnings_confidence=earnings.confidence,
+            earnings_date=earnings_date,
+            earnings_confidence=earnings.confidence if earnings else "UNVERIFIED",
             entry_date_start=today,
             entry_date_end=today + timedelta(days=2),
             planned_exit_date=exit_date,
             short_expiry=front_exp,
-            long_expiry=front_exp,  # Same expiry
+            long_expiry=front_exp,  # Same for butterfly
             lower_strike=lower_wing,
             upper_strike=upper_wing,
             legs=legs,
@@ -271,8 +320,16 @@ class ButterflyStrategy(BaseOptionsStrategy):
         )
 
     def generate_rationale(
-        self, ticker: str, days_to: int, lower_wing: float, body_strike: float, upper_wing: float,
-        exp: date, total_debit: float, exit_date: date, score: float
+        self,
+        ticker: str,
+        days_to: int,
+        lower_wing: float,
+        body_strike: float,
+        upper_wing: float,
+        exp: date,
+        total_debit: float,
+        exit_date: date,
+        score: float,
     ) -> str:
         return (
             f"Iron Butterfly on {ticker}. "
@@ -305,22 +362,24 @@ class ButterflyStrategy(BaseOptionsStrategy):
     ) -> list[TradeLeg]:
         # Iron Butterfly: Long Put Wing, Short Put Body, Short Call Body, Long Call Wing
         configs = [
-            (1, OptionType.PUT, LegSide.BUY, lower_wing, exp),      # Long Put
-            (2, OptionType.PUT, LegSide.SELL, body_strike, exp),    # Short Put
-            (3, OptionType.CALL, LegSide.SELL, body_strike, exp),   # Short Call
-            (4, OptionType.CALL, LegSide.BUY, upper_wing, exp),     # Long Call
+            (1, OptionType.PUT, LegSide.BUY, lower_wing, exp),  # Long Put
+            (2, OptionType.PUT, LegSide.SELL, body_strike, exp),  # Short Put
+            (3, OptionType.CALL, LegSide.SELL, body_strike, exp),  # Short Call
+            (4, OptionType.CALL, LegSide.BUY, upper_wing, exp),  # Long Call
         ]
         legs = []
         for leg_num, otype, side, strike, exp in configs:
             opt = self._find_option(chain, strike, exp, otype.value)
-            legs.append(TradeLeg(
-                leg_number=leg_num,
-                option_type=otype,
-                side=side,
-                strike=strike,
-                expiration=exp,
-                option=opt,
-            ))
+            legs.append(
+                TradeLeg(
+                    leg_number=leg_num,
+                    option_type=otype,
+                    side=side,
+                    strike=strike,
+                    expiration=exp,
+                    option=opt,
+                )
+            )
         return legs
 
     def _find_option(
@@ -328,15 +387,19 @@ class ButterflyStrategy(BaseOptionsStrategy):
     ) -> OptionRecord | None:
         otype_lower = otype.lower()
         for o in chain.options:
-            if o.strike == strike and o.expiration == exp and o.option_type.lower() == otype_lower:
+            if (
+                abs(o.strike - strike) < 0.01
+                and o.expiration == exp
+                and o.option_type.lower() == otype_lower
+            ):
                 return o
         return None
 
     def _pessimistic_debit(self, legs: list[TradeLeg]) -> float:
         total = 0.0
-        for l in legs:
-            if l.side == LegSide.BUY:
-                total += l.ask or (l.mid or 0.0)
+        for leg in legs:
+            if leg.side == LegSide.BUY:
+                total += leg.ask or (leg.mid or 0.0)
             else:
-                total -= l.bid or (l.mid or 0.0)
+                total -= leg.bid or (leg.mid or 0.0)
         return total

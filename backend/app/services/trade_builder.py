@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 from app.core.config import Settings
 from app.core.enums import LegSide, OptionType, RecommendationClass
@@ -78,24 +79,48 @@ class ConstructedTrade:
     key_risks: list[str] = field(default_factory=list)
     risk_disclaimer: str = RISK_DISCLAIMER
     strategy_type: str = "DOUBLE_CALENDAR"
+    layer_id: str | None = None
+    account_id: str | None = None
 
 
 class TradeConstructionEngine:
     """
-    Backward-compatible facade that delegates trade building to the active strategy.
-    In Phase 1, it defaults to the Double Calendar strategy.
+    Facade that delegates trade building to the active strategy based on the Phase State Machine.
     """
-    def __init__(self, settings: Settings, registry: ProviderRegistry) -> None:
+
+    def __init__(
+        self, settings: Settings, registry: ProviderRegistry, force_strategy: Any | None = None
+    ) -> None:
         self._settings = settings
         self._registry = registry
+        self._force_strategy = force_strategy
 
         from app.services.base_strategy import StrategyFactory
-        self._strategy = StrategyFactory(settings, registry).get_active_strategies()[0]
+
+        self._strategy_factory = StrategyFactory(settings, registry)
+
+    def _determine_phase(self, ticker: str, days_to: int) -> tuple[str, str, str]:
+        if ticker.upper() == "XSP":
+            return "IRON_BUTTERFLY_ATM", "L4", "IBKR_PERSONAL"
+        elif days_to >= 7:
+            return "DOUBLE_CALENDAR", "L1", "SHENIDO"
+        elif 0 <= days_to <= 2:
+            return "IRON_BUTTERFLY_ATM", "L2", "SHENIDO"
+        elif -3 <= days_to < 0:
+            return "IRON_BUTTERFLY_BULLISH", "L3", "SHENIDO"
+        return "DOUBLE_CALENDAR", "UNKNOWN", "SHENIDO"
 
     async def build_recommended(self, ticker: str) -> ConstructedTrade:
         earnings = await self._registry.earnings.get_earnings_date(ticker)
-        if earnings is None:
+        if earnings is None and ticker.upper() != "XSP":
             raise ValueError(f"No earnings date for {ticker}")
+
+        days_to = (earnings.earnings_date - date.today()).days if earnings else 0
+        strategy_id, layer_id, account_id = self._determine_phase(ticker, days_to)
+        if self._force_strategy:
+            strategy = self._force_strategy
+        else:
+            strategy = self._strategy_factory.get_strategy(strategy_id)
 
         price = await self._registry.price.get_current_price(ticker)
         if price is None:
@@ -104,7 +129,10 @@ class TradeConstructionEngine:
         chain = await self._registry.options.get_options_chain(ticker)
         vol = await self._registry.volatility.get_volatility_metrics(ticker)
 
-        return self._strategy.build_trade_structure(ticker, earnings, price, vol, chain)
+        trade = strategy.build_trade_structure(ticker, earnings, price, vol, chain)
+        trade.layer_id = layer_id
+        trade.account_id = account_id
+        return trade
 
     async def build_custom(
         self,
@@ -115,8 +143,15 @@ class TradeConstructionEngine:
         long_expiry: date | None = None,
     ) -> ConstructedTrade:
         earnings = await self._registry.earnings.get_earnings_date(ticker)
-        if earnings is None:
+        if earnings is None and ticker.upper() != "XSP":
             raise ValueError(f"No earnings date for {ticker}")
+
+        days_to = (earnings.earnings_date - date.today()).days if earnings else 0
+        strategy_id, layer_id, account_id = self._determine_phase(ticker, days_to)
+        if self._force_strategy:
+            strategy = self._force_strategy
+        else:
+            strategy = self._strategy_factory.get_strategy(strategy_id)
 
         price = await self._registry.price.get_current_price(ticker)
         if price is None:
@@ -125,10 +160,17 @@ class TradeConstructionEngine:
         chain = await self._registry.options.get_options_chain(ticker)
         vol = await self._registry.volatility.get_volatility_metrics(ticker)
 
-        return self._strategy.build_trade_structure(
-            ticker, earnings, price, vol, chain,
+        trade = strategy.build_trade_structure(
+            ticker,
+            earnings,
+            price,
+            vol,
+            chain,
             override_lower=lower_strike,
             override_upper=upper_strike,
             override_short_exp=short_expiry,
             override_long_exp=long_expiry,
         )
+        trade.layer_id = layer_id
+        trade.account_id = account_id
+        return trade

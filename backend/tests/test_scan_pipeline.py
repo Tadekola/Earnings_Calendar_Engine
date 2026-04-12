@@ -62,7 +62,10 @@ async def test_scored_results_have_factors(pipeline):
 async def test_rejected_results_have_reasons(pipeline):
     result = await pipeline.run()
     for r in result.results:
-        if r.classification == RecommendationClass.NO_TRADE and r.stage_reached != ScanStage.SCORING:
+        if (
+            r.classification == RecommendationClass.NO_TRADE
+            and r.stage_reached != ScanStage.SCORING
+        ):
             assert len(r.rejection_reasons) > 0
 
 

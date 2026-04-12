@@ -1,4 +1,5 @@
 """Comprehensive live data validation script."""
+
 import asyncio
 import os
 import sys
@@ -35,8 +36,16 @@ async def test_health():
     async with httpx.AsyncClient() as c:
         r = await c.get(f"{API}/health")
         d = r.json()
-        report("pass" if r.status_code == 200 else "fail", "Health endpoint", f"status={d.get('status')}")
-        report("pass" if d.get("operating_mode") == "STRICT" else "fail", "Operating mode", d.get("operating_mode"))
+        report(
+            "pass" if r.status_code == 200 else "fail",
+            "Health endpoint",
+            f"status={d.get('status')}",
+        )
+        report(
+            "pass" if d.get("operating_mode") == "STRICT" else "fail",
+            "Operating mode",
+            d.get("operating_mode"),
+        )
 
         providers = d.get("providers", [])
         for p in providers:
@@ -68,12 +77,20 @@ async def test_earnings():
         e = await r.earnings.get_earnings_date(t)
         if e:
             days = (e.earnings_date - date.today()).days
-            report("pass", f"{t} earnings", f"date={e.earnings_date} ({days}d away) timing={e.report_timing}")
+            report(
+                "pass",
+                f"{t} earnings",
+                f"date={e.earnings_date} ({days}d away) timing={e.report_timing}",
+            )
             found += 1
         else:
             report("warn", f"{t} earnings", "Not in next 60 days")
 
-    report("pass" if found >= 3 else "fail", "Earnings coverage", f"{found}/{len(test_tickers)} tickers have dates")
+    report(
+        "pass" if found >= 3 else "fail",
+        "Earnings coverage",
+        f"{found}/{len(test_tickers)} tickers have dates",
+    )
 
     # Cross-check: MSFT should report around late April 2026
     msft = await r.earnings.get_earnings_date("MSFT")
@@ -82,7 +99,7 @@ async def test_earnings():
         report(
             "pass" if msft.earnings_date.month == expected_month else "warn",
             "MSFT date cross-check",
-            f"Expected ~April 2026, got {msft.earnings_date}"
+            f"Expected ~April 2026, got {msft.earnings_date}",
         )
 
 
@@ -104,13 +121,16 @@ async def test_prices():
             report(
                 "pass" if sane else "fail",
                 f"{t} price",
-                f"${p.close:.2f} open=${p.open:.2f} high=${p.high:.2f} low=${p.low:.2f} vol={p.volume:,}"
+                f"${p.close:.2f} open=${p.open:.2f}"
+                f" high=${p.high:.2f} low=${p.low:.2f} vol={p.volume:,}",
             )
         else:
             report("fail", f"{t} price", "No data returned")
 
     # Test price history
-    aapl_hist = await r.price.get_price_history("AAPL", date.today() - timedelta(days=30), date.today())
+    aapl_hist = await r.price.get_price_history(
+        "AAPL", date.today() - timedelta(days=30), date.today()
+    )
     if aapl_hist and len(aapl_hist) > 0:
         report("pass", "AAPL 30d history", f"{len(aapl_hist)} trading days")
         # Verify dates are recent
@@ -119,7 +139,7 @@ async def test_prices():
         report(
             "pass" if days_stale <= 3 else "warn",
             "History freshness",
-            f"Latest date: {latest} ({days_stale}d ago)"
+            f"Latest date: {latest} ({days_stale}d ago)",
         )
     else:
         report("fail", "AAPL 30d history", "No data")
@@ -139,7 +159,7 @@ async def test_options():
         report(
             "pass" if len(exps) >= 5 else "fail",
             f"{t} expirations",
-            f"{len(exps)} dates (next: {exps[0] if exps else 'none'})"
+            f"{len(exps)} dates (next: {exps[0] if exps else 'none'})",
         )
 
     # Fetch a small chain for AAPL (next 2 expirations only)
@@ -149,7 +169,7 @@ async def test_options():
         report(
             "pass" if len(chain.options) > 0 else "fail",
             "AAPL chain (2 exps)",
-            f"{len(chain.options)} contracts, spot=${chain.spot_price:.2f}"
+            f"{len(chain.options)} contracts, spot=${chain.spot_price:.2f}",
         )
 
         # Verify chain has both calls and puts
@@ -160,16 +180,14 @@ async def test_options():
         with_delta = [o for o in chain.options if o.delta is not None]
         pct = len(with_delta) / len(chain.options) * 100 if chain.options else 0
         report(
-            "pass" if pct > 50 else "warn",
-            "Greeks coverage",
-            f"{pct:.0f}% of contracts have delta"
+            "pass" if pct > 50 else "warn", "Greeks coverage", f"{pct:.0f}% of contracts have delta"
         )
 
         # Spot price sanity
         report(
             "pass" if 50 < chain.spot_price < 1000 else "fail",
             "AAPL spot sanity",
-            f"${chain.spot_price:.2f}"
+            f"${chain.spot_price:.2f}",
         )
 
 
@@ -190,7 +208,9 @@ async def test_volatility():
             report(
                 "pass",
                 f"{t} volatility",
-                f"RV10={rv10:.1%} RV20={rv20:.1%} conf={v.meta.confidence_score}" if rv20 and rv10 else f"conf={v.meta.confidence_score} (partial data)"
+                f"RV10={rv10:.1%} RV20={rv20:.1%} conf={v.meta.confidence_score}"
+                if rv20 and rv10
+                else f"conf={v.meta.confidence_score} (partial data)",
             )
         else:
             report("fail", f"{t} volatility", "No data")
@@ -201,12 +221,20 @@ async def test_dashboard():
     async with httpx.AsyncClient() as c:
         r = await c.get(f"{API}/api/v1/dashboard/summary")
         d = r.json()
-        report("pass" if r.status_code == 200 else "fail", "Dashboard endpoint", f"status={r.status_code}")
-        report("pass" if d.get("total_scans", 0) > 0 else "warn", "Total scans", str(d.get("total_scans")))
+        report(
+            "pass" if r.status_code == 200 else "fail",
+            "Dashboard endpoint",
+            f"status={r.status_code}",
+        )
+        report(
+            "pass" if d.get("total_scans", 0) > 0 else "warn",
+            "Total scans",
+            str(d.get("total_scans")),
+        )
         report(
             "pass" if d.get("total_candidates_scanned", 0) > 0 else "warn",
             "Total candidates",
-            str(d.get("total_candidates_scanned"))
+            str(d.get("total_candidates_scanned")),
         )
         recent = d.get("recent_scans", [])
         report("pass" if len(recent) > 0 else "warn", "Recent scans", f"{len(recent)} entries")
@@ -217,10 +245,18 @@ async def test_scan_history():
     async with httpx.AsyncClient() as c:
         r = await c.get(f"{API}/api/v1/scan/results")
         d = r.json()
-        report("pass" if r.status_code == 200 else "fail", "Scan results endpoint", f"{len(d)} scan runs")
+        report(
+            "pass" if r.status_code == 200 else "fail",
+            "Scan results endpoint",
+            f"{len(d)} scan runs",
+        )
         if d and isinstance(d, list) and len(d) > 0:
             latest = d[0]
-            report("pass", "Latest scan", f"run_id={latest.get('run_id','')[:12]}... status={latest.get('status')}")
+            report(
+                "pass",
+                "Latest scan",
+                f"run_id={latest.get('run_id','')[:12]}... status={latest.get('status')}",
+            )
 
 
 async def test_trade_builder():
@@ -232,7 +268,11 @@ async def test_trade_builder():
                 r = await c.get(f"{API}/api/v1/candidates/{t}")
                 if r.status_code == 200:
                     d = r.json()
-                    report("pass", f"Candidate {t}", f"classification={d.get('classification')} score={d.get('overall_score')}")
+                    report(
+                        "pass",
+                        f"Candidate {t}",
+                        f"classification={d.get('classification')} score={d.get('overall_score')}",
+                    )
                     break
                 else:
                     report("warn", f"Candidate {t}", f"status={r.status_code}")
@@ -247,7 +287,11 @@ async def test_trade_builder():
                 d2 = r2.json()
                 report("pass", "Trade recommended", f"NFLX legs={len(d2.get('legs', []))}")
             else:
-                report("warn", "Trade recommended", f"status={r2.status_code} (need RECOMMEND classification)")
+                report(
+                    "warn",
+                    "Trade recommended",
+                    f"status={r2.status_code} (need RECOMMEND classification)",
+                )
         except httpx.ReadTimeout:
             report("warn", "Trade recommended", "Timeout")
 
@@ -257,7 +301,11 @@ async def test_rejections():
     async with httpx.AsyncClient() as c:
         r = await c.get(f"{API}/api/v1/rejections")
         d = r.json()
-        report("pass" if r.status_code == 200 else "fail", "Rejections endpoint", f"total={d.get('total')}")
+        report(
+            "pass" if r.status_code == 200 else "fail",
+            "Rejections endpoint",
+            f"total={d.get('total')}",
+        )
         rejections = d.get("rejections", [])
         stages = {}
         for rej in rejections:
@@ -279,20 +327,29 @@ async def test_settings():
         ew = d.get("earnings_window", {})
         max_days = ew.get("max_days_to_earnings")
         report("pass" if max_days else "warn", "MAX_DAYS_TO_EARNINGS", str(max_days))
-        report("pass" if d.get("operating_mode") == "STRICT" else "warn", "Operating mode", d.get("operating_mode"))
+        report(
+            "pass" if d.get("operating_mode") == "STRICT" else "warn",
+            "Operating mode",
+            d.get("operating_mode"),
+        )
 
         # Update test: widen the window temporarily
-        r2 = await c.put(
-            f"{API}/api/v1/settings",
-            json={"max_days_to_earnings": 30}
+        r2 = await c.put(f"{API}/api/v1/settings", json={"max_days_to_earnings": 30})
+        report(
+            "pass" if r2.status_code == 200 else "fail",
+            "Update setting",
+            f"status={r2.status_code}",
         )
-        report("pass" if r2.status_code == 200 else "fail", "Update setting", f"status={r2.status_code}")
 
         # Verify it was updated
         r3 = await c.get(f"{API}/api/v1/settings")
         d3 = r3.json()
         new_max = d3.get("earnings_window", {}).get("max_days_to_earnings")
-        report("pass" if new_max == 30 else "warn", "Setting persisted", f"MAX_DAYS_TO_EARNINGS={new_max}")
+        report(
+            "pass" if new_max == 30 else "warn",
+            "Setting persisted",
+            f"MAX_DAYS_TO_EARNINGS={new_max}",
+        )
 
 
 async def test_audit():
@@ -334,7 +391,11 @@ async def test_frontend_pages():
     async with httpx.AsyncClient() as c:
         for page in pages:
             r = await c.get(f"{FRONTEND}{page}")
-            report("pass" if r.status_code == 200 else "fail", f"Page {page}", f"status={r.status_code}")
+            report(
+                "pass" if r.status_code == 200 else "fail",
+                f"Page {page}",
+                f"status={r.status_code}",
+            )
 
 
 async def test_scan_with_wider_window():
@@ -344,7 +405,14 @@ async def test_scan_with_wider_window():
         r = await c.post(f"{API}/api/v1/scan/run")
         if r.status_code == 200:
             d = r.json()
-            report("pass", "Scan completed", f"scanned={d.get('total_scanned')} recommended={d.get('total_recommended')} watchlist={d.get('total_watchlist')} rejected={d.get('total_rejected')}")
+            report(
+                "pass",
+                "Scan completed",
+                f"scanned={d.get('total_scanned')}"
+                f" recommended={d.get('total_recommended')}"
+                f" watchlist={d.get('total_watchlist')}"
+                f" rejected={d.get('total_rejected')}",
+            )
 
             # Check individual results
             for res in d.get("results", []):
@@ -364,10 +432,7 @@ async def test_scan_with_wider_window():
             report("fail", "Scan failed", f"status={r.status_code} {r.text[:200]}")
 
         # Restore original setting
-        await c.put(
-            f"{API}/api/v1/settings",
-            json={"max_days_to_earnings": 21}
-        )
+        await c.put(f"{API}/api/v1/settings", json={"max_days_to_earnings": 21})
         report("pass", "Restored MAX_DAYS_TO_EARNINGS=21")
 
 
@@ -378,10 +443,19 @@ async def main():
     print("=" * 60)
 
     tests = [
-        test_health, test_earnings, test_prices, test_options,
-        test_volatility, test_dashboard, test_scan_history,
-        test_trade_builder, test_rejections, test_settings,
-        test_audit, test_export, test_frontend_pages,
+        test_health,
+        test_earnings,
+        test_prices,
+        test_options,
+        test_volatility,
+        test_dashboard,
+        test_scan_history,
+        test_trade_builder,
+        test_rejections,
+        test_settings,
+        test_audit,
+        test_export,
+        test_frontend_pages,
         test_scan_with_wider_window,
     ]
     for t in tests:
@@ -392,7 +466,10 @@ async def main():
 
     print("\n" + "=" * 60)
     total = results["pass"] + results["fail"] + results["warn"]
-    print(f"  RESULTS: {results['pass']}/{total} passed, {results['warn']} warnings, {results['fail']} failures")
+    print(
+        f"  RESULTS: {results['pass']}/{total} passed,"
+        f" {results['warn']} warnings, {results['fail']} failures"
+    )
     print("=" * 60)
 
     if results["fail"] > 0:

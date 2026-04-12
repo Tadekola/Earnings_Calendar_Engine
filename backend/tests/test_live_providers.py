@@ -14,6 +14,7 @@ from app.providers.live.tradier import TradierOptionsProvider
 # FMP Earnings Provider
 # ---------------------------------------------------------------------------
 
+
 def _fmp_settings() -> FMPSettings:
     return FMPSettings(FMP_API_KEY="test_key_123", FMP_TIMEOUT=5, FMP_MAX_RETRIES=1)
 
@@ -45,9 +46,10 @@ def _mock_fmp_earnings_response() -> list[dict]:
 @pytest.mark.asyncio
 async def test_fmp_earnings_upcoming():
     provider = FMPEarningsProvider(_fmp_settings())
-    mock_resp = httpx.Response(200, json=_mock_fmp_earnings_response())
 
-    with patch.object(provider, "_request", new_callable=AsyncMock, return_value=_mock_fmp_earnings_response()):
+    with patch.object(
+        provider, "_request", new_callable=AsyncMock, return_value=_mock_fmp_earnings_response()
+    ):
         results = await provider.get_upcoming_earnings(["AAPL", "MSFT"], days_ahead=30)
 
     assert len(results) == 2
@@ -61,7 +63,9 @@ async def test_fmp_earnings_upcoming():
 async def test_fmp_earnings_date_single():
     provider = FMPEarningsProvider(_fmp_settings())
 
-    with patch.object(provider, "_request", new_callable=AsyncMock, return_value=_mock_fmp_earnings_response()):
+    with patch.object(
+        provider, "_request", new_callable=AsyncMock, return_value=_mock_fmp_earnings_response()
+    ):
         rec = await provider.get_earnings_date("AAPL")
 
     assert rec is not None
@@ -83,7 +87,9 @@ async def test_fmp_earnings_not_found():
 async def test_fmp_earnings_api_error():
     provider = FMPEarningsProvider(_fmp_settings())
 
-    with patch.object(provider, "_request", new_callable=AsyncMock, side_effect=httpx.TransportError("timeout")):
+    with patch.object(
+        provider, "_request", new_callable=AsyncMock, side_effect=httpx.TransportError("timeout")
+    ):
         rec = await provider.get_earnings_date("AAPL")
 
     assert rec is None
@@ -93,7 +99,9 @@ async def test_fmp_earnings_api_error():
 async def test_fmp_earnings_health_ok():
     provider = FMPEarningsProvider(_fmp_settings())
 
-    with patch.object(provider, "_request", new_callable=AsyncMock, return_value=[{"symbol": "AAPL"}]):
+    with patch.object(
+        provider, "_request", new_callable=AsyncMock, return_value=[{"symbol": "AAPL"}]
+    ):
         meta = await provider.health_check()
 
     assert meta.confidence_score > 0
@@ -104,7 +112,9 @@ async def test_fmp_earnings_health_ok():
 async def test_fmp_earnings_health_fail():
     provider = FMPEarningsProvider(_fmp_settings())
 
-    with patch.object(provider, "_request", new_callable=AsyncMock, side_effect=Exception("network")):
+    with patch.object(
+        provider, "_request", new_callable=AsyncMock, side_effect=Exception("network")
+    ):
         meta = await provider.health_check()
 
     assert meta.confidence_score == 0.0
@@ -114,6 +124,7 @@ async def test_fmp_earnings_health_fail():
 # ---------------------------------------------------------------------------
 # FMP Price Provider
 # ---------------------------------------------------------------------------
+
 
 def _mock_fmp_quote_response() -> list[dict]:
     return [
@@ -134,7 +145,9 @@ def _mock_fmp_quote_response() -> list[dict]:
 async def test_fmp_price_current():
     provider = FMPPriceProvider(_fmp_settings())
 
-    with patch.object(provider, "_request", new_callable=AsyncMock, return_value=_mock_fmp_quote_response()):
+    with patch.object(
+        provider, "_request", new_callable=AsyncMock, return_value=_mock_fmp_quote_response()
+    ):
         rec = await provider.get_current_price("AAPL")
 
     assert rec is not None
@@ -161,8 +174,22 @@ async def test_fmp_price_history():
     mock_data = {
         "symbol": "AAPL",
         "historical": [
-            {"date": (today - timedelta(days=2)).isoformat(), "open": 193.0, "high": 195.0, "low": 192.0, "close": 194.0, "volume": 50000000},
-            {"date": (today - timedelta(days=1)).isoformat(), "open": 194.0, "high": 196.0, "low": 193.5, "close": 195.5, "volume": 55000000},
+            {
+                "date": (today - timedelta(days=2)).isoformat(),
+                "open": 193.0,
+                "high": 195.0,
+                "low": 192.0,
+                "close": 194.0,
+                "volume": 50000000,
+            },
+            {
+                "date": (today - timedelta(days=1)).isoformat(),
+                "open": 194.0,
+                "high": 196.0,
+                "low": 193.5,
+                "close": 195.5,
+                "volume": 55000000,
+            },
         ],
     }
 
@@ -177,18 +204,17 @@ async def test_fmp_price_history():
 # Tradier Options Provider
 # ---------------------------------------------------------------------------
 
+
 def _tradier_settings() -> TradierSettings:
-    return TradierSettings(TRADIER_ACCESS_TOKEN="test_token_456", TRADIER_TIMEOUT=5, TRADIER_MAX_RETRIES=1)
+    return TradierSettings(
+        TRADIER_ACCESS_TOKEN="test_token_456", TRADIER_TIMEOUT=5, TRADIER_MAX_RETRIES=1
+    )
 
 
 @pytest.mark.asyncio
 async def test_tradier_expirations():
     provider = TradierOptionsProvider(_tradier_settings())
-    mock_data = {
-        "expirations": {
-            "date": ["2026-04-17", "2026-05-15", "2026-06-19"]
-        }
-    }
+    mock_data = {"expirations": {"date": ["2026-04-17", "2026-05-15", "2026-06-19"]}}
 
     with patch.object(provider, "_request", new_callable=AsyncMock, return_value=mock_data):
         exps = await provider.get_expirations("AAPL")
@@ -214,7 +240,14 @@ async def test_tradier_chain():
                     "last": 5.20,
                     "volume": 1200,
                     "open_interest": 5000,
-                    "greeks": {"mid_iv": 0.28, "delta": 0.52, "gamma": 0.03, "theta": -0.05, "vega": 0.15, "rho": 0.02},
+                    "greeks": {
+                        "mid_iv": 0.28,
+                        "delta": 0.52,
+                        "gamma": 0.03,
+                        "theta": -0.05,
+                        "vega": 0.15,
+                        "rho": 0.02,
+                    },
                 },
                 {
                     "option_type": "put",
@@ -224,7 +257,14 @@ async def test_tradier_chain():
                     "last": 4.90,
                     "volume": 800,
                     "open_interest": 3500,
-                    "greeks": {"mid_iv": 0.27, "delta": -0.48, "gamma": 0.03, "theta": -0.04, "vega": 0.14, "rho": -0.01},
+                    "greeks": {
+                        "mid_iv": 0.27,
+                        "delta": -0.48,
+                        "gamma": 0.03,
+                        "theta": -0.04,
+                        "vega": 0.14,
+                        "rho": -0.01,
+                    },
                 },
             ]
         }
@@ -291,7 +331,9 @@ async def test_tradier_health_ok():
 async def test_tradier_health_fail():
     provider = TradierOptionsProvider(_tradier_settings())
 
-    with patch.object(provider, "_request", new_callable=AsyncMock, side_effect=Exception("auth failed")):
+    with patch.object(
+        provider, "_request", new_callable=AsyncMock, side_effect=Exception("auth failed")
+    ):
         meta = await provider.health_check()
 
     assert meta.confidence_score == 0.0

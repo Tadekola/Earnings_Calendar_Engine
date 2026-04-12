@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -21,7 +23,8 @@ _session_factory = None
 def _resolve_url(db_url: str) -> str:
     if db_url.startswith("postgresql") and "aiosqlite" not in db_url:
         try:
-            import asyncpg  # noqa: F401
+            import asyncpg  # type: ignore # noqa: F401
+
             if "+asyncpg" not in db_url:
                 db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
                 db_url = db_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
@@ -39,6 +42,7 @@ def get_engine():
     global _engine
     if _engine is None:
         from app.core.config import get_settings
+
         settings = get_settings()
         url = _resolve_url(settings.db.DATABASE_URL)
         _engine = create_async_engine(
@@ -60,7 +64,7 @@ def get_session_factory():
     return _session_factory
 
 
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     factory = get_session_factory()
     async with factory() as session:
         try:

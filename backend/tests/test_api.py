@@ -113,7 +113,9 @@ async def test_settings(client):
 @pytest.mark.asyncio
 async def test_rejections(client):
     response = await client.get("/api/v1/rejections")
-    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text[:500]}"
+    assert (
+        response.status_code == 200
+    ), f"Expected 200, got {response.status_code}: {response.text[:500]}"
     data = response.json()
     assert "total" in data
     assert "rejections" in data

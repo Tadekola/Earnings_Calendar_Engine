@@ -20,9 +20,7 @@ class RejectionLog(Base):
     metric_name: Mapped[str | None] = mapped_column(String(100))
     metric_value: Mapped[float | None] = mapped_column(Float)
     threshold_value: Mapped[float | None] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AuditLog(Base):
@@ -37,9 +35,7 @@ class AuditLog(Base):
     data_freshness: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     config_hash: Mapped[str | None] = mapped_column(String(64))
     scoring_version: Mapped[str | None] = mapped_column(String(20))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class SystemHealthSnapshot(Base):
@@ -53,6 +49,4 @@ class SystemHealthSnapshot(Base):
     last_successful_fetch: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     data_freshness_seconds: Mapped[int | None] = mapped_column(Integer)
     error_message: Mapped[str | None] = mapped_column(Text)
-    checked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

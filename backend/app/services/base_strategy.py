@@ -49,7 +49,7 @@ class BaseOptionsStrategy(ABC):
     def calculate_score(
         self,
         ticker: str,
-        earnings: EarningsRecord,
+        earnings: EarningsRecord | None,
         price: PriceRecord,
         vol: VolatilitySnapshot,
         chain: OptionsChainSnapshot,
@@ -74,10 +74,6 @@ class BaseOptionsStrategy(ABC):
         """Builds the actual 4-leg trade structure and calculates pricing."""
         pass
 
-    @abstractmethod
-    def generate_rationale(self, trade: ConstructedTrade, score: ScoringResult) -> str:
-        """Generates a human-readable rationale summarizing the trade setup."""
-        pass
 
 class StrategyFactory:
     """
@@ -88,13 +84,26 @@ class StrategyFactory:
         self._settings = settings
         self._registry = registry
 
-    def get_active_strategies(self) -> list[BaseOptionsStrategy]:
-        """Returns instances of all currently active strategies."""
+    def get_strategy(self, strategy_id: str) -> BaseOptionsStrategy:
         from app.services.strategies.butterfly import ButterflyStrategy
         from app.services.strategies.double_calendar import DoubleCalendarStrategy
 
-        strategies = [
-            DoubleCalendarStrategy(self._settings, self._registry),
-            ButterflyStrategy(self._settings, self._registry),
+        strategies = {
+            "DOUBLE_CALENDAR": DoubleCalendarStrategy(self._settings, self._registry),
+            "IRON_BUTTERFLY_ATM": ButterflyStrategy(
+                self._settings, self._registry, offset=0.0, strategy_id="IRON_BUTTERFLY_ATM"
+            ),
+            "IRON_BUTTERFLY_BULLISH": ButterflyStrategy(
+                self._settings, self._registry, offset=0.05, strategy_id="IRON_BUTTERFLY_BULLISH"
+            ),
+        }
+        if strategy_id not in strategies:
+            raise ValueError(f"Unknown strategy ID: {strategy_id}")
+        return strategies[strategy_id]
+
+    def get_active_strategies(self) -> list[BaseOptionsStrategy]:
+        """Return all currently active strategy instances."""
+        return [
+            self.get_strategy("DOUBLE_CALENDAR"),
+            self.get_strategy("IRON_BUTTERFLY_ATM"),
         ]
-        return strategies

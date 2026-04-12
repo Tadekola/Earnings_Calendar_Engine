@@ -71,7 +71,7 @@ class TradierOptionsProvider(OptionsChainProvider):
             logger.error("tradier_expirations_failed", ticker=ticker, error=str(e))
             return []
 
-        expirations_data = data.get("expirations", {})
+        expirations_data = data.get("expirations") or {}
         raw_dates = expirations_data.get("date", [])
         if isinstance(raw_dates, str):
             raw_dates = [raw_dates]
@@ -113,7 +113,7 @@ class TradierOptionsProvider(OptionsChainProvider):
                 )
                 continue
 
-            options_data = data.get("options", {})
+            options_data = data.get("options") or {}
             raw_options = options_data.get("option", [])
             if isinstance(raw_options, dict):
                 raw_options = [raw_options]
@@ -128,10 +128,8 @@ class TradierOptionsProvider(OptionsChainProvider):
         # Get spot price from a quote
         spot = 0.0
         try:
-            quote_data = await self._request(
-                "/markets/quotes", {"symbols": ticker}
-            )
-            quotes = quote_data.get("quotes", {}).get("quote", {})
+            quote_data = await self._request("/markets/quotes", {"symbols": ticker})
+            quotes = (quote_data.get("quotes") or {}).get("quote", {})
             if isinstance(quotes, list):
                 quotes = quotes[0] if quotes else {}
             spot = float(quotes.get("last", 0))

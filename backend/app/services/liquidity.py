@@ -32,7 +32,8 @@ class LiquidityEngine:
         details["avg_stock_volume"] = float(price.volume)
         if price.volume < self._settings.MIN_AVG_STOCK_VOLUME:
             reasons.append(
-                f"Stock volume {price.volume:,} below minimum {self._settings.MIN_AVG_STOCK_VOLUME:,}"
+                f"Stock volume {price.volume:,}"
+                f" below minimum {self._settings.MIN_AVG_STOCK_VOLUME:,}"
             )
             codes.append(RejectionReason.INSUFFICIENT_LIQUIDITY)
 
@@ -73,6 +74,7 @@ class LiquidityEngine:
         # Deep OTM/ITM strikes have near-zero volume and wide spreads by design
         spot = chain.spot_price
         atm_margin = spot * 0.10
+
         def _is_atm(o: OptionRecord) -> bool:
             return abs(o.strike - spot) <= atm_margin
 
@@ -81,17 +83,24 @@ class LiquidityEngine:
 
         # 1. Average option volume
         all_relevant = front_atm + back_atm
-        avg_vol = sum(o.volume or 0 for o in all_relevant) / len(all_relevant) if all_relevant else 0
+        avg_vol = (
+            sum(o.volume or 0 for o in all_relevant) / len(all_relevant) if all_relevant else 0
+        )
         details["avg_option_volume"] = avg_vol
         if avg_vol < self._settings.MIN_AVG_OPTION_VOLUME:
             reasons.append(
-                f"Avg option volume {avg_vol:.0f} below minimum {self._settings.MIN_AVG_OPTION_VOLUME}"
+                f"Avg option volume {avg_vol:.0f}"
+                f" below minimum {self._settings.MIN_AVG_OPTION_VOLUME}"
             )
             codes.append(RejectionReason.POOR_OPTIONS_LIQUIDITY)
         sub_scores.append(min(avg_vol / self._settings.MIN_AVG_OPTION_VOLUME, 2.0) / 2.0)
 
         # 2. Open interest
-        avg_oi = sum(o.open_interest or 0 for o in all_relevant) / len(all_relevant) if all_relevant else 0  # all_relevant already ATM-filtered
+        avg_oi = (
+            sum(o.open_interest or 0 for o in all_relevant) / len(all_relevant)
+            if all_relevant
+            else 0
+        )  # all_relevant already ATM-filtered
         details["avg_open_interest"] = avg_oi
         if avg_oi < self._settings.MIN_OPEN_INTEREST:
             reasons.append(
@@ -112,7 +121,8 @@ class LiquidityEngine:
         details["atm_strike_count_front"] = float(atm_strike_count)
         if atm_strike_count < self._settings.MIN_STRIKE_DENSITY:
             reasons.append(
-                f"Only {atm_strike_count} strikes near ATM for front expiry, need {self._settings.MIN_STRIKE_DENSITY}"
+                f"Only {atm_strike_count} strikes near ATM"
+                f" for front expiry, need {self._settings.MIN_STRIKE_DENSITY}"
             )
             codes.append(RejectionReason.POOR_STRIKE_AVAILABILITY)
         sub_scores.append(min(atm_strike_count / self._settings.MIN_STRIKE_DENSITY, 2.0) / 2.0)
@@ -128,9 +138,7 @@ class LiquidityEngine:
             details=details,
         )
 
-    def _evaluate_spreads(
-        self, options: list[OptionRecord], details: dict[str, float]
-    ) -> dict:
+    def _evaluate_spreads(self, options: list[OptionRecord], details: dict[str, float]) -> dict:
         if not options:
             return {"passed": False, "score": 0.0, "reasons": ["No options to evaluate spreads"]}
 
@@ -155,16 +163,15 @@ class LiquidityEngine:
         reasons = []
         if avg_spread > self._settings.MAX_BID_ASK_PCT:
             reasons.append(
-                f"Avg bid-ask spread {avg_spread:.1%} exceeds maximum {self._settings.MAX_BID_ASK_PCT:.1%}"
+                f"Avg bid-ask spread {avg_spread:.1%}"
+                f" exceeds maximum {self._settings.MAX_BID_ASK_PCT:.1%}"
             )
 
         # Score inversely proportional to spread
         spread_score = max(0, 1.0 - (avg_spread / (self._settings.MAX_BID_ASK_PCT * 2)))
         return {"passed": len(reasons) == 0, "score": spread_score, "reasons": reasons}
 
-    def _count_atm_strikes(
-        self, chain: OptionsChainSnapshot, expiration: date
-    ) -> int:
+    def _count_atm_strikes(self, chain: OptionsChainSnapshot, expiration: date) -> int:
         spot = chain.spot_price
         margin = spot * 0.05  # 5% around ATM
         exp_opts = [o for o in chain.options if o.expiration == expiration]
@@ -195,6 +202,8 @@ class LiquidityEngine:
             passed=stock_result.passed and options_result.passed,
             score=round(blended, 1),
             rejection_reasons=stock_result.rejection_reasons + options_result.rejection_reasons,
-            rejection_codes=list(set(stock_result.rejection_codes + options_result.rejection_codes)),
+            rejection_codes=list(
+                set(stock_result.rejection_codes + options_result.rejection_codes)
+            ),
             details=all_details,
         )

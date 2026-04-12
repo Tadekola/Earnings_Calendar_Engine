@@ -27,14 +27,12 @@ class ProviderRegistry:
         self._volatility: VolatilityMetricsProvider | None = None
 
     def initialize(self) -> None:
-        use_live = (
-            self._settings.data.STRICT_LIVE_DATA
-            and not self._settings.data.ALLOW_SIMULATION
-        )
+        use_live = self._settings.data.STRICT_LIVE_DATA and not self._settings.data.ALLOW_SIMULATION
 
         # Earnings provider
         if use_live and self._settings.fmp.is_configured:
             from app.providers.live.fmp import FMPEarningsProvider
+
             logger.info("provider_init", provider="earnings", type="fmp_live")
             self._earnings = FMPEarningsProvider(self._settings.fmp)
         else:
@@ -44,6 +42,7 @@ class ProviderRegistry:
         # Price provider
         if use_live and self._settings.fmp.is_configured:
             from app.providers.live.fmp import FMPPriceProvider
+
             logger.info("provider_init", provider="price", type="fmp_live")
             self._price = FMPPriceProvider(self._settings.fmp)
         else:
@@ -53,6 +52,7 @@ class ProviderRegistry:
         # Options provider
         if use_live and self._settings.tradier.is_configured:
             from app.providers.live.tradier import TradierOptionsProvider
+
             logger.info("provider_init", provider="options", type="tradier_live")
             self._options = TradierOptionsProvider(self._settings.tradier)
         else:
@@ -62,6 +62,7 @@ class ProviderRegistry:
         # Volatility provider — computed from price + options when live
         if use_live and (self._settings.fmp.is_configured or self._settings.tradier.is_configured):
             from app.providers.live.volatility import ComputedVolatilityProvider
+
             logger.info("provider_init", provider="volatility", type="computed_live")
             self._volatility = ComputedVolatilityProvider(self._price, self._options)
         else:

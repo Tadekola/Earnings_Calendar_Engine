@@ -12,19 +12,47 @@ from app.providers.base import (
 )
 
 MOCK_SPOT: dict[str, float] = {
-    "SPY": 525.0, "QQQ": 445.0, "AAPL": 195.0, "MSFT": 420.0,
-    "NVDA": 880.0, "AMZN": 185.0, "META": 510.0, "GOOGL": 165.0,
-    "TSLA": 175.0, "AMD": 160.0, "NFLX": 625.0, "JPM": 200.0,
-    "BAC": 38.0, "XOM": 115.0, "CVX": 160.0, "UNH": 520.0,
-    "COST": 740.0, "AVGO": 1350.0, "PLTR": 24.0,
+    "SPY": 525.0,
+    "QQQ": 445.0,
+    "AAPL": 195.0,
+    "MSFT": 420.0,
+    "NVDA": 880.0,
+    "AMZN": 185.0,
+    "META": 510.0,
+    "GOOGL": 165.0,
+    "TSLA": 175.0,
+    "AMD": 160.0,
+    "NFLX": 625.0,
+    "JPM": 200.0,
+    "BAC": 38.0,
+    "XOM": 115.0,
+    "CVX": 160.0,
+    "UNH": 520.0,
+    "COST": 740.0,
+    "AVGO": 1350.0,
+    "PLTR": 24.0,
 }
 
 MOCK_BASE_IV: dict[str, float] = {
-    "SPY": 0.14, "QQQ": 0.17, "AAPL": 0.22, "MSFT": 0.20,
-    "NVDA": 0.38, "AMZN": 0.28, "META": 0.32, "GOOGL": 0.25,
-    "TSLA": 0.55, "AMD": 0.42, "NFLX": 0.35, "JPM": 0.20,
-    "BAC": 0.22, "XOM": 0.18, "CVX": 0.18, "UNH": 0.20,
-    "COST": 0.18, "AVGO": 0.30, "PLTR": 0.60,
+    "SPY": 0.14,
+    "QQQ": 0.17,
+    "AAPL": 0.22,
+    "MSFT": 0.20,
+    "NVDA": 0.38,
+    "AMZN": 0.28,
+    "META": 0.32,
+    "GOOGL": 0.25,
+    "TSLA": 0.55,
+    "AMD": 0.42,
+    "NFLX": 0.35,
+    "JPM": 0.20,
+    "BAC": 0.22,
+    "XOM": 0.18,
+    "CVX": 0.18,
+    "UNH": 0.20,
+    "COST": 0.18,
+    "AVGO": 0.30,
+    "PLTR": 0.60,
 }
 
 
@@ -72,7 +100,9 @@ class MockOptionsProvider(OptionsChainProvider):
         moneyness = math.log(spot / strike) if strike > 0 else 0
         intrinsic = max(0, spot - strike) if option_type == "CALL" else max(0, strike - spot)
         time_value = spot * iv * math.sqrt(t) * 0.4
-        theo = max(intrinsic + time_value * math.exp(-moneyness**2 / (2 * iv**2 * t + 0.01)), 0.01)
+        theo = max(
+            intrinsic + time_value * math.exp(-(moneyness**2) / (2 * iv**2 * t + 0.01)), 0.01
+        )
         spread = max(0.05, theo * self._rng.uniform(0.02, 0.08))
         bid = round(max(0.01, theo - spread / 2), 2)
         ask = round(theo + spread / 2, 2)

@@ -81,6 +81,7 @@ async def update_settings(
         if count > 0:
             # Audit log each changed setting
             from app.services.audit import AuditService
+
             audit = AuditService(db)
             for key, new_val in overrides.items():
                 if new_val is not None:
@@ -92,6 +93,7 @@ async def update_settings(
             svc.apply_overrides(settings, db_overrides)
     except Exception as e:
         import structlog
+
         structlog.get_logger().warning("settings_persist_failed", error=str(e))
         try:
             await db.rollback()
@@ -104,6 +106,7 @@ async def update_settings(
 @router.get("/scheduler", response_model=SchedulerStatusResponse)
 async def get_scheduler_status(request: Request) -> SchedulerStatusResponse:
     from app.services.scheduler import get_scheduler
+
     scheduler = get_scheduler()
     if scheduler is None:
         return SchedulerStatusResponse(running=False, jobs=[])
@@ -122,10 +125,12 @@ async def get_scheduler_status(request: Request) -> SchedulerStatusResponse:
 async def trigger_scan_now(request: Request) -> dict:
     """Manually trigger an immediate scan."""
     from app.services.scheduler import scheduled_scan
+
     settings = request.app.state.settings
     registry = request.app.state.provider_registry
 
     import asyncio
+
     asyncio.create_task(scheduled_scan(settings, registry))
 
     return {"status": "triggered", "message": "Scan job started in background"}

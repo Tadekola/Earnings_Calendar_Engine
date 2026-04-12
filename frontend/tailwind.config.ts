@@ -9,6 +9,10 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "Menlo", "monospace"],
+      },
       colors: {
         brand: {
           50: "#f0f4ff",
@@ -32,6 +36,20 @@ const config: Config = {
         success: "#2b8a3e",
         warning: "#e67700",
         danger: "#c92a2a",
+      },
+      borderRadius: {
+        lg: "0.625rem",
+        md: "0.4375rem",
+        sm: "0.3125rem",
+      },
+      keyframes: {
+        "pulse-subtle": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.6" },
+        },
+      },
+      animation: {
+        "pulse-subtle": "pulse-subtle 1.5s ease-in-out infinite",
       },
     },
   },

@@ -1,4 +1,5 @@
 """WebSocket endpoint for real-time scan progress."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect

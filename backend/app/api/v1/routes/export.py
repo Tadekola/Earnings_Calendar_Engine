@@ -1,4 +1,5 @@
 """CSV export endpoints for scan results and candidates."""
+
 from __future__ import annotations
 
 import csv
@@ -24,19 +25,35 @@ async def export_scans_csv(db: AsyncSession = Depends(get_db)) -> StreamingRespo
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow([
-        "run_id", "status", "total_scanned", "total_recommended",
-        "total_watchlist", "total_rejected", "operating_mode",
-        "scoring_version", "started_at", "completed_at",
-    ])
+    writer.writerow(
+        [
+            "run_id",
+            "status",
+            "total_scanned",
+            "total_recommended",
+            "total_watchlist",
+            "total_rejected",
+            "operating_mode",
+            "scoring_version",
+            "started_at",
+            "completed_at",
+        ]
+    )
     for r in rows:
-        writer.writerow([
-            r.run_id, r.status, r.total_scanned, r.total_recommended,
-            r.total_watchlist, r.total_rejected, r.operating_mode,
-            r.scoring_version,
-            r.started_at.isoformat() if r.started_at else "",
-            r.completed_at.isoformat() if r.completed_at else "",
-        ])
+        writer.writerow(
+            [
+                r.run_id,
+                r.status,
+                r.total_scanned,
+                r.total_recommended,
+                r.total_watchlist,
+                r.total_rejected,
+                r.operating_mode,
+                r.scoring_version,
+                r.started_at.isoformat() if r.started_at else "",
+                r.completed_at.isoformat() if r.completed_at else "",
+            ]
+        )
 
     buf.seek(0)
     ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
@@ -61,18 +78,33 @@ async def export_candidates_csv(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow([
-        "scan_run_id", "ticker", "classification", "overall_score",
-        "stage_reached", "rejection_reasons", "rationale_summary",
-        "processing_time_ms", "created_at",
-    ])
+    writer.writerow(
+        [
+            "scan_run_id",
+            "ticker",
+            "classification",
+            "overall_score",
+            "stage_reached",
+            "rejection_reasons",
+            "rationale_summary",
+            "processing_time_ms",
+            "created_at",
+        ]
+    )
     for r in rows:
-        writer.writerow([
-            r.scan_run_id, r.ticker, r.classification, r.overall_score,
-            r.stage_reached, r.rejection_reasons or "", r.rationale_summary or "",
-            r.processing_time_ms,
-            r.created_at.isoformat() if r.created_at else "",
-        ])
+        writer.writerow(
+            [
+                r.scan_run_id,
+                r.ticker,
+                r.classification,
+                r.overall_score,
+                r.stage_reached,
+                r.rejection_reasons or "",
+                r.rationale_summary or "",
+                r.processing_time_ms,
+                r.created_at.isoformat() if r.created_at else "",
+            ]
+        )
 
     buf.seek(0)
     ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
@@ -97,22 +129,39 @@ async def export_scores_csv(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow([
-        "scan_run_id", "ticker", "liquidity", "earnings_timing",
-        "vol_term_structure", "containment", "pricing_efficiency",
-        "event_cleanliness", "historical_fit", "weighted_total",
-        "scoring_version", "created_at",
-    ])
+    writer.writerow(
+        [
+            "scan_run_id",
+            "ticker",
+            "liquidity",
+            "earnings_timing",
+            "vol_term_structure",
+            "containment",
+            "pricing_efficiency",
+            "event_cleanliness",
+            "historical_fit",
+            "weighted_total",
+            "scoring_version",
+            "created_at",
+        ]
+    )
     for r in rows:
-        writer.writerow([
-            r.scan_run_id, r.ticker,
-            r.liquidity_score, r.earnings_timing_score,
-            r.vol_term_structure_score, r.containment_score,
-            r.pricing_efficiency_score, r.event_cleanliness_score,
-            r.historical_fit_score, r.weighted_total,
-            r.scoring_version,
-            r.created_at.isoformat() if r.created_at else "",
-        ])
+        writer.writerow(
+            [
+                r.scan_run_id,
+                r.ticker,
+                r.liquidity_score,
+                r.earnings_timing_score,
+                r.vol_term_structure_score,
+                r.containment_score,
+                r.pricing_efficiency_score,
+                r.event_cleanliness_score,
+                r.historical_fit_score,
+                r.weighted_total,
+                r.scoring_version,
+                r.created_at.isoformat() if r.created_at else "",
+            ]
+        )
 
     buf.seek(0)
     ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")

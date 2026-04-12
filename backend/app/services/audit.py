@@ -1,4 +1,5 @@
 """Audit logging service — records user actions and system events to audit_logs table."""
+
 from __future__ import annotations
 
 import json

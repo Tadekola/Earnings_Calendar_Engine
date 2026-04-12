@@ -1,4 +1,5 @@
 """Tests for settings persistence service."""
+
 from __future__ import annotations
 
 import pytest
@@ -23,10 +24,12 @@ async def db_session():
 @pytest.mark.asyncio
 async def test_save_and_load_overrides(db_session):
     svc = SettingsPersistenceService(db_session)
-    count = await svc.save_overrides({
-        "recommend_threshold": 75,
-        "watchlist_threshold": 50,
-    })
+    count = await svc.save_overrides(
+        {
+            "recommend_threshold": 75,
+            "watchlist_threshold": 50,
+        }
+    )
     await db_session.commit()
     assert count == 2
 
@@ -65,20 +68,24 @@ async def test_apply_overrides_to_settings(db_session):
 @pytest.mark.asyncio
 async def test_ignore_unknown_keys(db_session):
     svc = SettingsPersistenceService(db_session)
-    count = await svc.save_overrides({
-        "unknown_key": "value",
-        "recommend_threshold": 60,
-    })
+    count = await svc.save_overrides(
+        {
+            "unknown_key": "value",
+            "recommend_threshold": 60,
+        }
+    )
     assert count == 1
 
 
 @pytest.mark.asyncio
 async def test_ignore_none_values(db_session):
     svc = SettingsPersistenceService(db_session)
-    count = await svc.save_overrides({
-        "recommend_threshold": None,
-        "watchlist_threshold": 55,
-    })
+    count = await svc.save_overrides(
+        {
+            "recommend_threshold": None,
+            "watchlist_threshold": 55,
+        }
+    )
     assert count == 1
 
 

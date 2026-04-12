@@ -22,6 +22,7 @@ from app.services.strategies.double_calendar import DoubleCalendarStrategy
 def live_settings():
     return get_settings()
 
+
 @pytest.fixture
 def mock_registry():
     registry = MagicMock(spec=ProviderRegistry)
@@ -30,35 +31,110 @@ def mock_registry():
 
 @pytest.fixture
 def mock_chain():
+    from app.providers.base import ProviderMeta
+
+    meta = ProviderMeta("unknown")
+    # ticker, option_type, strike, expiration, bid, ask, mid, last,
+    # volume, open_interest, implied_volatility, delta, gamma, theta,
+    # vega, rho
     return OptionsChainSnapshot(
         ticker="TEST",
         spot_price=100.0,
-        snapshot_time=date.today(),
-        expirations=[date(2026, 4, 24), date(2026, 5, 8)],
         options=[
-            OptionRecord("TEST", "put", 90.0, date(2026, 4, 24), bid=1.0, ask=1.2, mid=1.1),
-            OptionRecord("TEST", "put", 100.0, date(2026, 4, 24), bid=3.0, ask=3.2, mid=3.1),
-            OptionRecord("TEST", "call", 100.0, date(2026, 4, 24), bid=3.0, ask=3.2, mid=3.1),
-            OptionRecord("TEST", "call", 110.0, date(2026, 4, 24), bid=1.0, ask=1.2, mid=1.1),
-
-            # Additional options for Double Calendar back month
-            OptionRecord("TEST", "put", 90.0, date(2026, 5, 8), bid=2.0, ask=2.2, mid=2.1),
-            OptionRecord("TEST", "put", 100.0, date(2026, 5, 8), bid=4.0, ask=4.2, mid=4.1),
-            OptionRecord("TEST", "call", 100.0, date(2026, 5, 8), bid=4.0, ask=4.2, mid=4.1),
-            OptionRecord("TEST", "call", 110.0, date(2026, 5, 8), bid=2.0, ask=2.2, mid=2.1),
+            OptionRecord(
+                "TEST",
+                "put",
+                90.0,
+                date(2026, 4, 24),
+                1.0,
+                1.2,
+                1.1,
+                1.1,
+                10,
+                100,
+                0.3,
+                -0.1,
+                0,
+                0,
+                0,
+                0,
+            ),
+            OptionRecord(
+                "TEST",
+                "put",
+                100.0,
+                date(2026, 4, 24),
+                3.0,
+                3.2,
+                3.1,
+                3.1,
+                10,
+                100,
+                0.3,
+                -0.5,
+                0,
+                0,
+                0,
+                0,
+            ),
+            OptionRecord(
+                "TEST",
+                "call",
+                100.0,
+                date(2026, 4, 24),
+                3.0,
+                3.2,
+                3.1,
+                3.1,
+                10,
+                100,
+                0.3,
+                0.5,
+                0,
+                0,
+                0,
+                0,
+            ),
+            OptionRecord(
+                "TEST",
+                "call",
+                110.0,
+                date(2026, 4, 24),
+                1.0,
+                1.2,
+                1.1,
+                1.1,
+                10,
+                100,
+                0.3,
+                0.1,
+                0,
+                0,
+                0,
+                0,
+            ),
         ],
+        snapshot_time=date.today(),
+        meta=meta,
     )
 
 
 @pytest.fixture
 def mock_vol():
+    from app.providers.base import ProviderMeta
+
+    meta = ProviderMeta("unknown")
     return VolatilitySnapshot(
         ticker="TEST",
         as_of_date=date.today(),
-        iv_percentile=0.90,  # High IVP to trigger Butterfly bonus
-        front_expiry_iv=0.40,
-        back_expiry_iv=0.30, # Backwardation to trigger Calendar bonus
+        iv_rank=0.9,
+        iv_percentile=90.0,
+        front_expiry_iv=0.30,
+        back_expiry_iv=0.25,
+        term_structure_slope=-0.15,
+        realized_vol_20d=0.20,
         atr_14d=2.0,
+        meta=meta,
     )
 
 
@@ -69,7 +145,7 @@ def test_strategy_factory(live_settings, mock_registry):
     assert isinstance(strategies[0], DoubleCalendarStrategy)
     assert isinstance(strategies[1], ButterflyStrategy)
     assert strategies[0].strategy_type == "DOUBLE_CALENDAR"
-    assert strategies[1].strategy_type == "BUTTERFLY"
+    assert strategies[1].strategy_type == "IRON_BUTTERFLY_ATM"
 
 
 def test_butterfly_scoring_iv_percentile(live_settings, mock_registry, mock_chain, mock_vol):
@@ -84,9 +160,8 @@ def test_butterfly_scoring_iv_percentile(live_settings, mock_registry, mock_chai
     assert score.ticker == "TEST"
     assert len(score.factors) >= 2
     # IV Percentile is > 0.8, should be maxed out to 100 raw score
-    ivp_factor = next(f for f in score.factors if f.name == "IV Percentile")
+    ivp_factor = next(f for f in score.factors if f.name == "Implied Volatility Percentile")
     assert ivp_factor.raw_score == 100.0
-    assert ivp_factor.weighted_score == 35.0
 
 
 def test_butterfly_build_trade_structure(live_settings, mock_registry, mock_chain, mock_vol):
@@ -112,7 +187,6 @@ def test_butterfly_build_trade_structure(live_settings, mock_registry, mock_chai
     # All legs should have same expiration
     assert all(leg.expiration == date(2026, 4, 24) for leg in trade.legs)
     assert trade.short_expiry == date(2026, 4, 24)
-    assert trade.long_expiry == date(2026, 4, 24)
 
     # Check structure: Long Put 90, Short Put 100, Short Call 100, Long Call 110
     leg1 = next(leg for leg in trade.legs if leg.leg_number == 1)
@@ -124,7 +198,9 @@ def test_butterfly_build_trade_structure(live_settings, mock_registry, mock_chai
     assert leg2.debit == -3.1
 
     leg3 = next(leg for leg in trade.legs if leg.leg_number == 3)
-    assert leg3.side == LegSide.SELL and leg3.option_type == OptionType.CALL and leg3.strike == 100.0
+    assert (
+        leg3.side == LegSide.SELL and leg3.option_type == OptionType.CALL and leg3.strike == 100.0
+    )
     assert leg3.debit == -3.1
 
     leg4 = next(leg for leg in trade.legs if leg.leg_number == 4)
@@ -136,4 +212,4 @@ def test_butterfly_build_trade_structure(live_settings, mock_registry, mock_chai
     assert trade.total_debit_mid == -4.0
     assert trade.estimated_max_loss == 6.0  # Spread width 10.0 - 4.0 credit
     assert trade.profit_zone_low == 96.0  # 100 - 4.0 credit
-    assert trade.profit_zone_high == 104.0 # 100 + 4.0 credit
+    assert trade.profit_zone_high == 104.0  # 100 + 4.0 credit

@@ -30,7 +30,7 @@ async def run_scan(
 ) -> ScanRunResponse:
     settings = request.app.state.settings
     registry = request.app.state.provider_registry
-    tickers = (body.tickers if body and body.tickers else None)
+    tickers = body.tickers if body and body.tickers else None
 
     from app.services.ws_manager import scan_ws_manager
 
@@ -43,13 +43,17 @@ async def run_scan(
         await persistence.save_scan_run(scan_result)
 
         from app.services.audit import AuditService
+
         audit = AuditService(db)
         await audit.log_scan_trigger("api", tickers)
         await audit.log_scan_complete(
-            scan_result.run_id, scan_result.total_scanned, scan_result.total_recommended,
+            scan_result.run_id,
+            scan_result.total_scanned,
+            scan_result.total_recommended,
         )
     except Exception as e:
         import structlog
+
         structlog.get_logger().warning("scan_persist_failed", error=str(e))
         try:
             await db.rollback()
@@ -71,17 +75,22 @@ async def run_scan(
                 for f in r.scoring_result.factors
             ]
 
-        results.append(ScanResultResponse(
-            ticker=r.ticker,
-            classification=r.classification,
-            overall_score=r.overall_score,
-            stage_reached=r.stage_reached.value,
-            rejection_reasons=r.rejection_reasons or None,
-            rationale_summary=r.rationale_summary,
-            processing_time_ms=r.processing_time_ms,
-            score_breakdown=score_breakdown,
-            risk_warnings=r.scoring_result.risk_warnings if r.scoring_result else None,
-        ))
+        results.append(
+            ScanResultResponse(
+                ticker=r.ticker,
+                classification=r.classification,
+                overall_score=r.overall_score,
+                stage_reached=r.stage_reached.value,
+                rejection_reasons=r.rejection_reasons or None,
+                rationale_summary=r.rationale_summary,
+                processing_time_ms=r.processing_time_ms,
+                score_breakdown=score_breakdown,
+                risk_warnings=r.scoring_result.risk_warnings if r.scoring_result else None,
+                strategy_type=r.strategy_type,
+                layer_id=r.layer_id,
+                account_id=r.account_id,
+            )
+        )
 
     run = ScanRunResponse(
         run_id=scan_result.run_id,
@@ -114,10 +123,11 @@ async def run_scan_async(
 
     settings = request.app.state.settings
     registry = request.app.state.provider_registry
-    tickers = (body.tickers if body and body.tickers else None)
+    tickers = body.tickers if body and body.tickers else None
 
     async def _do_scan() -> None:
         from app.services.ws_manager import scan_ws_manager
+
         try:
             pipeline = ScanPipeline(settings, registry)
             scan_result = await pipeline.run(tickers, progress_callback=scan_ws_manager.broadcast)
@@ -128,23 +138,30 @@ async def run_scan_async(
                 if r.scoring_result and r.scoring_result.factors:
                     score_breakdown = [
                         ScoreBreakdown(
-                            factor=f.name, weight=f.weight,
-                            raw_score=f.raw_score, weighted_score=f.weighted_score,
+                            factor=f.name,
+                            weight=f.weight,
+                            raw_score=f.raw_score,
+                            weighted_score=f.weighted_score,
                             rationale=f.rationale,
                         )
                         for f in r.scoring_result.factors
                     ]
-                results.append(ScanResultResponse(
-                    ticker=r.ticker,
-                    classification=r.classification,
-                    overall_score=r.overall_score,
-                    stage_reached=r.stage_reached.value,
-                    rejection_reasons=r.rejection_reasons or None,
-                    rationale_summary=r.rationale_summary,
-                    processing_time_ms=r.processing_time_ms,
-                    score_breakdown=score_breakdown,
-                    risk_warnings=r.scoring_result.risk_warnings if r.scoring_result else None,
-                ))
+                results.append(
+                    ScanResultResponse(
+                        ticker=r.ticker,
+                        classification=r.classification,
+                        overall_score=r.overall_score,
+                        stage_reached=r.stage_reached.value,
+                        rejection_reasons=r.rejection_reasons or None,
+                        rationale_summary=r.rationale_summary,
+                        processing_time_ms=r.processing_time_ms,
+                        score_breakdown=score_breakdown,
+                        risk_warnings=r.scoring_result.risk_warnings if r.scoring_result else None,
+                        strategy_type=r.strategy_type,
+                        layer_id=r.layer_id,
+                        account_id=r.account_id,
+                    )
+                )
 
             run = ScanRunResponse(
                 run_id=scan_result.run_id,
@@ -169,29 +186,36 @@ async def run_scan_async(
                     persistence = ScanPersistenceService(db)
                     await persistence.save_scan_run(scan_result)
                     from app.services.audit import AuditService
+
                     audit = AuditService(db)
                     await audit.log_scan_trigger("api", tickers)
                     await audit.log_scan_complete(
-                        scan_result.run_id, scan_result.total_scanned,
+                        scan_result.run_id,
+                        scan_result.total_scanned,
                         scan_result.total_recommended,
                     )
             except Exception:
                 pass
 
             # Broadcast completion over WebSocket
-            await scan_ws_manager.broadcast({
-                "type": "scan_complete",
-                "run_id": scan_result.run_id,
-                "total_scanned": scan_result.total_scanned,
-                "total_recommended": scan_result.total_recommended,
-                "total_watchlist": scan_result.total_watchlist,
-                "total_rejected": scan_result.total_rejected,
-            })
+            await scan_ws_manager.broadcast(
+                {
+                    "type": "scan_complete",
+                    "run_id": scan_result.run_id,
+                    "total_scanned": scan_result.total_scanned,
+                    "total_recommended": scan_result.total_recommended,
+                    "total_watchlist": scan_result.total_watchlist,
+                    "total_rejected": scan_result.total_rejected,
+                }
+            )
 
         except Exception as e:
             _running_scans[run_id] = "FAILED"
             from app.services.ws_manager import scan_ws_manager
-            await scan_ws_manager.broadcast({"type": "scan_error", "run_id": run_id, "error": str(e)})
+
+            await scan_ws_manager.broadcast(
+                {"type": "scan_error", "run_id": run_id, "error": str(e)}
+            )
 
     background_tasks.add_task(_do_scan)
     return {"run_id": run_id, "status": "RUNNING"}
@@ -216,6 +240,7 @@ async def get_scan_results(db: AsyncSession = Depends(get_db)) -> list[ScanSumma
         from sqlalchemy import select
 
         from app.models.scan import ScanRun
+
         stmt = select(ScanRun).order_by(ScanRun.started_at.desc()).limit(20)
         result = await db.execute(stmt)
         rows = result.scalars().all()

@@ -57,13 +57,13 @@ def start_scheduler(settings: Settings, registry: ProviderRegistry) -> AsyncIOSc
 
     _scheduler = AsyncIOScheduler()
 
-    # Run scans at 6:00 AM ET (11:00 UTC) on weekdays — before market open
+    # Run at 9:00 AM CT
     _scheduler.add_job(
         scheduled_scan,
-        trigger=CronTrigger(day_of_week="mon-fri", hour=11, minute=0),
+        trigger=CronTrigger(timezone="America/Chicago", day_of_week="mon-fri", hour=9, minute=0),
         args=[settings, registry],
-        id="daily_scan",
-        name="Daily Pre-market Scan",
+        id="layered_morning_scan",
+        name="V4 Layered Morning Scan",
         replace_existing=True,
         misfire_grace_time=3600,
     )

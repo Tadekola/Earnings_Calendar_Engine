@@ -40,7 +40,9 @@ def low_volume_price():
     )
 
 
-def _make_chain(spot: float, front_exp: date, back_exp: date, good_liquidity: bool = True) -> OptionsChainSnapshot:
+def _make_chain(
+    spot: float, front_exp: date, back_exp: date, good_liquidity: bool = True
+) -> OptionsChainSnapshot:
     options = []
     for exp in [front_exp, back_exp]:
         for strike_offset in [-5, -2.5, 0, 2.5, 5]:
@@ -50,17 +52,19 @@ def _make_chain(spot: float, front_exp: date, back_exp: date, good_liquidity: bo
             bid = 3.00 if good_liquidity else 0.10
             ask = 3.10 if good_liquidity else 0.80
             for otype in ["CALL", "PUT"]:
-                options.append(OptionRecord(
-                    ticker="TEST",
-                    option_type=otype,
-                    strike=strike,
-                    expiration=exp,
-                    bid=bid,
-                    ask=ask,
-                    volume=vol,
-                    open_interest=oi,
-                    implied_volatility=0.30,
-                ))
+                options.append(
+                    OptionRecord(
+                        ticker="TEST",
+                        option_type=otype,
+                        strike=strike,
+                        expiration=exp,
+                        bid=bid,
+                        ask=ask,
+                        volume=vol,
+                        open_interest=oi,
+                        implied_volatility=0.30,
+                    )
+                )
     return OptionsChainSnapshot(
         ticker="TEST",
         spot_price=spot,

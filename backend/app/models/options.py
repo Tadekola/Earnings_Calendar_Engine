@@ -34,6 +34,4 @@ class OptionSnapshot(Base):
     snapshot_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-    fetched_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

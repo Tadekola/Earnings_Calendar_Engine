@@ -67,9 +67,7 @@ async def liveness() -> LivenessResponse:
 async def readiness(request: Request) -> ReadinessResponse:
     registry = request.app.state.provider_registry
     provider_statuses = await registry.health_check_all()
-    checks = {
-        name: meta.error_details is None for name, meta in provider_statuses.items()
-    }
+    checks = {name: meta.error_details is None for name, meta in provider_statuses.items()}
     checks["database"] = True
     all_ready = all(checks.values())
     return ReadinessResponse(

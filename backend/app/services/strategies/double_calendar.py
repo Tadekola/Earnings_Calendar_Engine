@@ -44,7 +44,7 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
     def calculate_score(
         self,
         ticker: str,
-        earnings: EarningsRecord,
+        earnings: EarningsRecord | None,
         price: PriceRecord,
         vol: VolatilitySnapshot,
         chain: OptionsChainSnapshot,
@@ -59,22 +59,23 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
             liquidity=liquidity,
         )
 
-        # Capital Preservation Bonus for Double Calendars
-        # Max loss is capped at debit, but back-month retains extrinsic value
-        scoring_result.factors.append(
+        factors = scoring_result.factors
+
+        # Append strategy-specific risk factor
+        factors.append(
             ScoreFactor(
-                name="Capital Preservation",
+                name="Capital Preservation Buffer",
                 weight=10.0,
                 raw_score=100.0,
-                weighted_score=10.0,
-                rationale="Double Calendars retain back-month extrinsic value, limiting true max loss."
+                weighted_score=0.0,  # will be normalized below
+                rationale="Double Calendars retain back-month extrinsic value.",
             )
         )
 
         # Regime Filter Bonus
         front_iv = vol.front_expiry_iv or 0.0
         back_iv = vol.back_expiry_iv or 0.0
-        in_backwardation = (front_iv > back_iv * 1.10)  # > 10%
+        in_backwardation = front_iv > back_iv * 1.10  # > 10%
 
         if in_backwardation:
             scoring_result.factors.append(
@@ -82,26 +83,34 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
                     name="Regime Filter",
                     weight=10.0,
                     raw_score=100.0,
-                    weighted_score=10.0,
-                    rationale="IV Backwardation regime detected. +10 bonus for Double Calendar."
+                    weighted_score=0.0,  # will be normalized below
+                    rationale="IV Backwardation regime detected. +10 bonus for Double Calendar.",
                 )
             )
 
-        scoring_result.overall_score = min(100.0, sum(f.weighted_score for f in scoring_result.factors))
+        # Re-normalize all weighted_scores using actual total weight
+        total_weight = sum(f.weight for f in scoring_result.factors)
+        if total_weight > 0:
+            for f in scoring_result.factors:
+                f.weighted_score = round(f.raw_score * (f.weight / total_weight), 2)
+
+        scoring_result.overall_score = min(
+            100.0, sum(f.weighted_score for f in scoring_result.factors)
+        )
 
         if scoring_result.overall_score >= self._settings.scoring.RECOMMEND_THRESHOLD:
             scoring_result.classification = RecommendationClass.RECOMMEND
         elif scoring_result.overall_score >= self._settings.scoring.WATCHLIST_THRESHOLD:
             scoring_result.classification = RecommendationClass.WATCHLIST
 
-        days_to = (earnings.earnings_date - __import__("datetime").date.today()).days
+        days_to = (earnings.earnings_date - date.today()).days if earnings else 0
         scoring_result.rationale_summary = self._scoring._build_rationale(
             ticker,
             scoring_result.overall_score,
             scoring_result.classification,
             scoring_result.factors,
             days_to,
-            earnings
+            earnings,
         )
 
         if in_backwardation:
@@ -112,7 +121,7 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
     def build_trade_structure(
         self,
         ticker: str,
-        earnings: EarningsRecord,
+        earnings: EarningsRecord | None,
         price: PriceRecord,
         vol: VolatilitySnapshot,
         chain: OptionsChainSnapshot,
@@ -121,22 +130,28 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
         override_short_exp: date | None = None,
         override_long_exp: date | None = None,
     ) -> ConstructedTrade:
-        spot = price.close
+        spot = chain.spot_price or price.close
         today = date.today()
-        days_to = (earnings.earnings_date - today).days
-        exit_date = earnings.earnings_date - timedelta(
-            days=self._settings.earnings_window.EXIT_DAYS_BEFORE_EARNINGS
-        )
+
+        # Step 1: Select Expirations
+        earnings_date = earnings.earnings_date if earnings else today + timedelta(days=1)
+        days_to = (earnings_date - today).days if earnings else 0
 
         expirations = sorted(chain.expirations)
-        short_exp = override_short_exp or self._select_short_expiry(expirations, earnings.earnings_date)
+        short_exp = override_short_exp or self._select_short_expiry(expirations, earnings_date)
         long_exp = override_long_exp or self._select_long_expiry(expirations, short_exp)
 
         front_iv = vol.front_expiry_iv or 0.25
-        estimated_move = spot * front_iv * (days_to / 365) ** 0.5
+        # Floor at 1 day to avoid zero-width strikes at DTE=0
+        dte_for_move = max(days_to, 1)
+        estimated_move = spot * front_iv * (dte_for_move / 365) ** 0.5
 
-        lower = override_lower or self._snap_strike(spot - estimated_move * 0.8, chain, short_exp, long_exp)
-        upper = override_upper or self._snap_strike(spot + estimated_move * 0.8, chain, short_exp, long_exp)
+        lower = override_lower or self._snap_strike(
+            spot - estimated_move * 0.8, chain, short_exp, long_exp
+        )
+        upper = override_upper or self._snap_strike(
+            spot + estimated_move * 0.8, chain, short_exp, long_exp
+        )
 
         if lower >= upper:
             short_strikes = {o.strike for o in chain.options if o.expiration == short_exp}
@@ -145,14 +160,18 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
             if not valid_strikes:
                 valid_strikes = sorted({o.strike for o in chain.options})
 
-            atm_idx = min(range(len(valid_strikes)), key=lambda i: abs(valid_strikes[i] - spot)) if valid_strikes else 0
+            atm_idx = (
+                min(range(len(valid_strikes)), key=lambda i: abs(valid_strikes[i] - spot))
+                if valid_strikes
+                else 0
+            )
             if atm_idx > 0 and atm_idx < len(valid_strikes) - 1:
                 lower = valid_strikes[max(0, atm_idx - 2)]
                 upper = valid_strikes[min(len(valid_strikes) - 1, atm_idx + 2)]
 
         legs = self._build_legs(ticker, lower, upper, short_exp, long_exp, chain)
 
-        total_debit = sum(l.debit for l in legs)
+        total_debit = sum(leg.debit for leg in legs)
         total_debit_pessimistic = self._pessimistic_debit(legs)
 
         profit_zone_low = round(lower - estimated_move * 0.3, 2)
@@ -167,18 +186,39 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
             "IV expansion may not materialize as expected",
             "Bid-ask spreads may widen at execution",
         ]
-        if earnings.confidence != "CONFIRMED":
+        if earnings and earnings.confidence != "CONFIRMED":
             key_risks.insert(0, f"Earnings date is {earnings.confidence} — high change risk")
         if total_debit > spot * 0.03:
-            key_risks.append(f"Total debit ${total_debit:.2f} is >3% of spot — consider sizing down")
+            key_risks.append(
+                f"Total debit ${total_debit:.2f} is >3% of spot — consider sizing down"
+            )
 
-        rationale = self.generate_rationale(ticker, days_to, lower, upper, short_exp, long_exp, total_debit, exit_date, scoring_result.overall_score)
+        exit_date = earnings_date - timedelta(days=1)
+        if earnings and earnings.report_timing == "BEFORE_OPEN":
+            exit_date = earnings_date - timedelta(days=1)
+        elif earnings and earnings.report_timing == "AFTER_CLOSE":
+            exit_date = earnings_date
+
+        if exit_date < today:
+            exit_date = today
+
+        rationale = self.generate_rationale(
+            ticker,
+            days_to,
+            lower,
+            upper,
+            short_exp,
+            long_exp,
+            total_debit,
+            exit_date,
+            scoring_result.overall_score,
+        )
 
         return ConstructedTrade(
             ticker=ticker,
             spot_price=spot,
-            earnings_date=earnings.earnings_date,
-            earnings_confidence=earnings.confidence,
+            earnings_date=earnings_date,
+            earnings_confidence=earnings.confidence if earnings else "UNVERIFIED",
             entry_date_start=today,
             entry_date_end=today + timedelta(days=2),
             planned_exit_date=exit_date,
@@ -200,8 +240,16 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
         )
 
     def generate_rationale(
-        self, ticker: str, days_to: int, lower: float, upper: float,
-        short_exp: date, long_exp: date, total_debit: float, exit_date: date, score: float
+        self,
+        ticker: str,
+        days_to: int,
+        lower: float,
+        upper: float,
+        short_exp: date,
+        long_exp: date,
+        total_debit: float,
+        exit_date: date,
+        score: float,
     ) -> str:
         return (
             f"Double calendar on {ticker} with earnings in {days_to}d. "
@@ -224,7 +272,9 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
             return candidates[0]
         return short_expiry + timedelta(days=28)
 
-    def _snap_strike(self, target: float, chain: OptionsChainSnapshot, short_exp: date, long_exp: date) -> float:
+    def _snap_strike(
+        self, target: float, chain: OptionsChainSnapshot, short_exp: date, long_exp: date
+    ) -> float:
         short_strikes = {o.strike for o in chain.options if o.expiration == short_exp}
         long_strikes = {o.strike for o in chain.options if o.expiration == long_exp}
         valid_strikes = sorted(short_strikes.intersection(long_strikes))
@@ -255,14 +305,16 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
         legs = []
         for leg_num, otype, side, strike, exp in configs:
             opt = self._find_option(chain, strike, exp, otype.value)
-            legs.append(TradeLeg(
-                leg_number=leg_num,
-                option_type=otype,
-                side=side,
-                strike=strike,
-                expiration=exp,
-                option=opt,
-            ))
+            legs.append(
+                TradeLeg(
+                    leg_number=leg_num,
+                    option_type=otype,
+                    side=side,
+                    strike=strike,
+                    expiration=exp,
+                    option=opt,
+                )
+            )
         return legs
 
     def _find_option(
@@ -276,9 +328,9 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
 
     def _pessimistic_debit(self, legs: list[TradeLeg]) -> float:
         total = 0.0
-        for l in legs:
-            if l.side == LegSide.BUY:
-                total += l.ask or (l.mid or 0.0)
+        for leg in legs:
+            if leg.side == LegSide.BUY:
+                total += leg.ask or (leg.mid or 0.0)
             else:
-                total -= l.bid or (l.mid or 0.0)
+                total -= leg.bid or (leg.mid or 0.0)
         return total

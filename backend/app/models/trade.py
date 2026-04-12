@@ -14,6 +14,8 @@ class RecommendedTrade(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     scan_run_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     ticker: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    layer_id: Mapped[str | None] = mapped_column(String(10))
+    account_id: Mapped[str | None] = mapped_column(String(50))
     spot_price: Mapped[float] = mapped_column(Float, nullable=False)
     earnings_date: Mapped[date] = mapped_column(Date, nullable=False)
     earnings_confidence: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -35,9 +37,7 @@ class RecommendedTrade(Base):
     key_risks: Mapped[str | None] = mapped_column(Text)
     risk_disclaimer: Mapped[str | None] = mapped_column(Text)
     construction_version: Mapped[str] = mapped_column(String(20), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class TradeLeg(Base):

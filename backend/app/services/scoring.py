@@ -59,7 +59,7 @@ class ScoringEngine:
     def score(
         self,
         ticker: str,
-        earnings: EarningsRecord,
+        earnings: EarningsRecord | None,
         price: PriceRecord,
         vol: VolatilitySnapshot,
         chain: OptionsChainSnapshot,
@@ -67,7 +67,7 @@ class ScoringEngine:
     ) -> ScoringResult:
         factors: list[ScoreFactor] = []
         warnings: list[str] = []
-        days_to = (earnings.earnings_date - date.today()).days
+        days_to = (earnings.earnings_date - date.today()).days if earnings else 0
 
         # 1. Liquidity Quality (weight: 25)
         factors.append(self._score_liquidity(liquidity))
@@ -108,7 +108,9 @@ class ScoringEngine:
         # Risk warnings
         warnings.extend(self._generate_warnings(earnings, vol, price, days_to, liquidity))
 
-        rationale = self._build_rationale(ticker, overall, classification, factors, days_to, earnings)
+        rationale = self._build_rationale(
+            ticker, overall, classification, factors, days_to, earnings
+        )
 
         return ScoringResult(
             ticker=ticker,
@@ -137,17 +139,28 @@ class ScoringEngine:
         rationale = f"Liquidity score {raw:.0f}/100."
         if not liquidity.passed:
             rationale += f" Issues: {'; '.join(liquidity.rejection_reasons[:2])}."
-        return self._make_factor("Liquidity Quality", self._scoring.LIQUIDITY_WEIGHT, raw, rationale)
+        return self._make_factor(
+            "Liquidity Quality", self._scoring.LIQUIDITY_WEIGHT, raw, rationale
+        )
 
     # --- Factor 2: Earnings Timing ---
-    def _score_earnings_timing(self, days_to: int, earnings: EarningsRecord) -> ScoreFactor:
-        ideal_center = (self._earnings.MIN_DAYS_TO_EARNINGS + self._earnings.MAX_DAYS_TO_EARNINGS) / 2.0
-        ideal_range = (self._earnings.MAX_DAYS_TO_EARNINGS - self._earnings.MIN_DAYS_TO_EARNINGS) / 2.0
+    def _score_earnings_timing(self, days_to: int, earnings: EarningsRecord | None) -> ScoreFactor:
+        if not earnings:
+            return self._make_factor(
+                "Earnings Timing", self._scoring.EARNINGS_TIMING_WEIGHT, 50.0, "No earnings date."
+            )
+
+        ideal_center = (
+            self._earnings.MIN_DAYS_TO_EARNINGS + self._earnings.MAX_DAYS_TO_EARNINGS
+        ) / 2.0
+        ideal_range = (
+            self._earnings.MAX_DAYS_TO_EARNINGS - self._earnings.MIN_DAYS_TO_EARNINGS
+        ) / 2.0
 
         # Bell curve scoring around ideal center
         if ideal_range > 0:
             distance = abs(days_to - ideal_center) / ideal_range
-            timing_score = max(0, 100 * (1.0 - distance ** 1.5))
+            timing_score = max(0, 100 * (1.0 - distance**1.5))
         else:
             timing_score = 50.0
 
@@ -189,17 +202,26 @@ class ScoringEngine:
                 score = 25.0
                 rationale_parts.append(f"Contango ({slope:.3f}) — unfavorable for calendars")
 
-        # IV rank context
+        # IV rank context (vol.iv_rank is 0.0–1.0 percentile)
         if vol.iv_rank is not None:
-            if 30 <= vol.iv_rank <= 65:
+            iv_rank_pct = vol.iv_rank * 100
+            if 30 <= iv_rank_pct <= 65:
                 score = min(100, score + 10)
-                rationale_parts.append(f"IV rank {vol.iv_rank:.0f}% in sweet spot")
-            elif vol.iv_rank > 80:
+                rationale_parts.append(
+                    f"IV rank {iv_rank_pct:.0f}% in sweet spot"
+                )
+            elif iv_rank_pct > 80:
                 score = max(0, score - 10)
-                rationale_parts.append(f"IV rank {vol.iv_rank:.0f}% elevated — may have limited upside")
-            elif vol.iv_rank < 15:
+                rationale_parts.append(
+                    f"IV rank {iv_rank_pct:.0f}% elevated"
+                    " — may have limited upside"
+                )
+            elif iv_rank_pct < 15:
                 score = max(0, score - 5)
-                rationale_parts.append(f"IV rank {vol.iv_rank:.0f}% low — limited IV expansion potential")
+                rationale_parts.append(
+                    f"IV rank {iv_rank_pct:.0f}% low"
+                    " — limited IV expansion potential"
+                )
 
         # Front/back IV ratio
         if vol.front_expiry_iv and vol.back_expiry_iv and vol.back_expiry_iv > 0:
@@ -220,15 +242,17 @@ class ScoringEngine:
         )
 
     # --- Factor 4: Pre-earnings Containment ---
-    def _score_containment(self, price: PriceRecord, vol: VolatilitySnapshot, days_to: int) -> ScoreFactor:
+    def _score_containment(
+        self, price: PriceRecord, vol: VolatilitySnapshot, days_to: int
+    ) -> ScoreFactor:
         score = 60.0
         rationale_parts = []
 
         # Use realized vol to estimate expected pre-earnings range
         rv = vol.realized_vol_20d or vol.realized_vol_10d
         if rv is not None and price.close > 0:
-            daily_move_pct = rv / (252 ** 0.5)
-            expected_range_pct = daily_move_pct * (days_to ** 0.5)
+            daily_move_pct = rv / (252**0.5)
+            expected_range_pct = daily_move_pct * (days_to**0.5)
 
             if expected_range_pct < 0.03:
                 score = 90.0
@@ -241,7 +265,9 @@ class ScoringEngine:
                 rationale_parts.append(f"Wide expected range ({expected_range_pct:.1%})")
             else:
                 score = 30.0
-                rationale_parts.append(f"Very wide expected range ({expected_range_pct:.1%}) — risky")
+                rationale_parts.append(
+                    f"Very wide expected range ({expected_range_pct:.1%}) — risky"
+                )
 
         # ATR context
         if vol.atr_14d is not None and price.close > 0:
@@ -259,37 +285,47 @@ class ScoringEngine:
         )
 
     # --- Factor 5: Pricing Efficiency ---
-    def _score_pricing_efficiency(self, chain: OptionsChainSnapshot, price: PriceRecord) -> ScoreFactor:
+    def _score_pricing_efficiency(
+        self, chain: OptionsChainSnapshot, price: PriceRecord
+    ) -> ScoreFactor:
         if not chain.options:
             return self._make_factor(
-                "Pricing Efficiency", self._scoring.PRICING_EFFICIENCY_WEIGHT, 0.0,
-                "No options data for pricing evaluation."
+                "Pricing Efficiency",
+                self._scoring.PRICING_EFFICIENCY_WEIGHT,
+                0.0,
+                "No options data for pricing evaluation.",
             )
 
         spot = chain.spot_price or price.close
         margin = spot * 0.05
         atm_options = [
-            o for o in chain.options
+            o
+            for o in chain.options
             if abs(o.strike - spot) <= margin and o.bid is not None and o.ask is not None
         ]
 
         if not atm_options:
             return self._make_factor(
-                "Pricing Efficiency", self._scoring.PRICING_EFFICIENCY_WEIGHT, 30.0,
-                "No ATM options with valid bid/ask."
+                "Pricing Efficiency",
+                self._scoring.PRICING_EFFICIENCY_WEIGHT,
+                30.0,
+                "No ATM options with valid bid/ask.",
             )
 
         # Evaluate mid-price consistency and spread-to-mid ratio
         spread_to_mids = []
         for o in atm_options:
-            mid = (o.bid + o.ask) / 2.0
-            if mid > 0:
-                spread_to_mids.append((o.ask - o.bid) / mid)
+            if o.bid is not None and o.ask is not None:
+                mid = (o.bid + o.ask) / 2.0
+                if mid > 0:
+                    spread_to_mids.append((o.ask - o.bid) / mid)
 
         if not spread_to_mids:
             return self._make_factor(
-                "Pricing Efficiency", self._scoring.PRICING_EFFICIENCY_WEIGHT, 30.0,
-                "Cannot compute spread-to-mid ratios."
+                "Pricing Efficiency",
+                self._scoring.PRICING_EFFICIENCY_WEIGHT,
+                30.0,
+                "Cannot compute spread-to-mid ratios.",
             )
 
         avg_stm = sum(spread_to_mids) / len(spread_to_mids)
@@ -310,7 +346,17 @@ class ScoringEngine:
         )
 
     # --- Factor 6: Event Cleanliness ---
-    def _score_event_cleanliness(self, earnings: EarningsRecord, vol: VolatilitySnapshot) -> ScoreFactor:
+    def _score_event_cleanliness(
+        self, earnings: EarningsRecord | None, vol: VolatilitySnapshot
+    ) -> ScoreFactor:
+        if not earnings:
+            return self._make_factor(
+                "Event Cleanliness",
+                self._scoring.EVENT_CLEANLINESS_WEIGHT,
+                50.0,
+                "No earnings event.",
+            )
+
         score = 70.0
         rationale_parts = []
 
@@ -333,9 +379,11 @@ class ScoringEngine:
             rationale_parts.append("Unknown report timing")
 
         # Check if IV suggests other catalysts might be priced in
-        if vol.iv_rank is not None and vol.iv_rank > 85:
+        if vol.iv_rank is not None and vol.iv_rank > 0.85:
             score = max(0, score - 15)
-            rationale_parts.append("Very high IV rank may indicate overlapping catalysts")
+            rationale_parts.append(
+                "Very high IV rank may indicate overlapping catalysts"
+            )
 
         rationale = "; ".join(rationale_parts)
         return self._make_factor(
@@ -348,18 +396,21 @@ class ScoringEngine:
         rationale_parts = []
 
         # Compare realized vol windows for consistency
-        if vol.realized_vol_10d is not None and vol.realized_vol_30d is not None:
-            if vol.realized_vol_30d > 0:
-                rv_ratio = vol.realized_vol_10d / vol.realized_vol_30d
-                if 0.8 <= rv_ratio <= 1.2:
-                    score = 75.0
-                    rationale_parts.append(f"Stable realized vol (10d/30d ratio: {rv_ratio:.2f})")
-                elif rv_ratio > 1.5:
-                    score = 35.0
-                    rationale_parts.append(f"Spiking vol (10d/30d ratio: {rv_ratio:.2f})")
-                elif rv_ratio < 0.6:
-                    score = 55.0
-                    rationale_parts.append(f"Declining vol (10d/30d ratio: {rv_ratio:.2f})")
+        if (
+            vol.realized_vol_10d is not None
+            and vol.realized_vol_30d is not None
+            and vol.realized_vol_30d > 0
+        ):
+            rv_ratio = vol.realized_vol_10d / vol.realized_vol_30d
+            if 0.8 <= rv_ratio <= 1.2:
+                score = 75.0
+                rationale_parts.append(f"Stable realized vol (10d/30d ratio: {rv_ratio:.2f})")
+            elif rv_ratio > 1.5:
+                score = 35.0
+                rationale_parts.append(f"Spiking vol (10d/30d ratio: {rv_ratio:.2f})")
+            elif rv_ratio < 0.6:
+                score = 55.0
+                rationale_parts.append(f"Declining vol (10d/30d ratio: {rv_ratio:.2f})")
 
         # Placeholder: real historical earnings move data will come in Phase 5
         if not rationale_parts:
@@ -390,7 +441,8 @@ class ScoringEngine:
                 # IV significantly below HV — options are cheap, strong buy
                 score = 95.0
                 rationale_parts.append(
-                    f"IV/HV ratio {ratio:.2f} — options are cheap vs realized movement. Strong buy signal."
+                    f"IV/HV ratio {ratio:.2f} — options are cheap"
+                    " vs realized movement. Strong buy signal."
                 )
             elif ratio < 0.95:
                 # IV moderately below HV — favorable
@@ -424,13 +476,11 @@ class ScoringEngine:
             rationale_parts.append("Insufficient volatility data for IV/HV comparison.")
 
         rationale = "; ".join(rationale_parts) if rationale_parts else "No IV/HV data available."
-        return self._make_factor(
-            "IV/HV Gap", self._scoring.IV_HV_GAP_WEIGHT, score, rationale
-        )
+        return self._make_factor("IV/HV Gap", self._scoring.IV_HV_GAP_WEIGHT, score, rationale)
 
     def _generate_warnings(
         self,
-        earnings: EarningsRecord,
+        earnings: EarningsRecord | None,
         vol: VolatilitySnapshot,
         price: PriceRecord,
         days_to: int,
@@ -438,17 +488,22 @@ class ScoringEngine:
     ) -> list[str]:
         warnings = []
 
-        if earnings.confidence != "CONFIRMED":
+        if earnings and earnings.confidence != "CONFIRMED":
             warnings.append(f"Earnings date is {earnings.confidence} — verify before entry.")
 
-        if vol.iv_rank is not None and vol.iv_rank > 80:
-            warnings.append(f"IV rank at {vol.iv_rank:.0f}% — elevated. IV expansion may be limited.")
+        if vol.iv_rank is not None and vol.iv_rank > 0.80:
+            warnings.append(
+                f"IV rank at {vol.iv_rank * 100:.0f}%"
+                " — elevated. IV expansion may be limited."
+            )
 
         if days_to <= self._earnings.MIN_DAYS_TO_EARNINGS + 2:
             warnings.append(f"Only {days_to} days to earnings — limited time for theta capture.")
 
         if not liquidity.passed:
-            warnings.append("Liquidity thresholds not fully met — use limit orders and reduce size.")
+            warnings.append(
+                "Liquidity thresholds not fully met — use limit orders and reduce size."
+            )
 
         if vol.term_structure_slope is not None and vol.term_structure_slope > 0.05:
             warnings.append("Contango term structure — calendars may underperform.")
@@ -477,10 +532,14 @@ class ScoringEngine:
         classification: RecommendationClass,
         factors: list[ScoreFactor],
         days_to: int,
-        earnings: EarningsRecord,
+        earnings: EarningsRecord | None,
     ) -> str:
         parts = [f"{ticker}: Score {score:.1f}/100 → {classification.value}."]
-        parts.append(f"Earnings in {days_to} days ({earnings.confidence}).")
+
+        if earnings:
+            parts.append(f"Earnings in {days_to} days ({earnings.confidence}).")
+        else:
+            parts.append(f"No earnings event (days_to={days_to}).")
 
         top_factors = sorted(factors, key=lambda f: f.weighted_score, reverse=True)[:3]
         strengths = [f.name for f in top_factors if f.raw_score >= 70]

@@ -19,7 +19,7 @@ from app.core.logging import get_logger
 from app.providers.registry import ProviderRegistry
 from app.services.base_strategy import StrategyFactory
 from app.services.liquidity import LiquidityEngine
-from app.services.scoring import ScoringEngine
+from app.services.scoring import ScoringEngine, ScoringResult
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -38,6 +38,8 @@ class TickerScanResult:
     rationale_summary: str = ""
     processing_time_ms: int = 0
     strategy_type: str | None = None
+    layer_id: str | None = None
+    account_id: str | None = None
 
 
 @dataclass
@@ -75,6 +77,10 @@ class ScanPipeline:
             universe = tickers
         elif self._settings.data.UNIVERSE_SOURCE == UniverseSource.SP500:
             universe = await self._build_sp500_universe()
+            # Inject non-earnings tickers (like XSP) into SP500 universe
+            for t in self._settings.DEFAULT_UNIVERSE:
+                if t == "XSP" and t not in universe:
+                    universe.append(t)
         else:
             universe = self._settings.DEFAULT_UNIVERSE
 
@@ -105,16 +111,18 @@ class ScanPipeline:
 
             if progress_callback:
                 try:
-                    await progress_callback({
-                        "type": "ticker_complete",
-                        "run_id": run_id,
-                        "ticker": ticker,
-                        "classification": result.classification.value,
-                        "score": result.overall_score,
-                        "index": idx + 1,
-                        "total": len(universe),
-                        "pct": round(((idx + 1) / len(universe)) * 100, 1),
-                    })
+                    await progress_callback(
+                        {
+                            "type": "ticker_complete",
+                            "run_id": run_id,
+                            "ticker": ticker,
+                            "classification": result.classification.value,
+                            "score": result.overall_score,
+                            "index": idx + 1,
+                            "total": len(universe),
+                            "pct": round(((idx + 1) / len(universe)) * 100, 1),
+                        }
+                    )
                 except Exception:
                     pass
 
@@ -150,15 +158,22 @@ class ScanPipeline:
         with confirmed earnings within the configured earnings window.
         This avoids running expensive options API calls on all ~500 tickers."""
         from app.providers.live.fmp import FMPEarningsProvider
+
         earnings_provider = self._registry.earnings
         if not isinstance(earnings_provider, FMPEarningsProvider):
-            logger.warning("sp500_universe_fallback", reason="earnings provider is not FMP, using DEFAULT_UNIVERSE")
+            logger.warning(
+                "sp500_universe_fallback",
+                reason="earnings provider is not FMP, using DEFAULT_UNIVERSE",
+            )
             return self._settings.DEFAULT_UNIVERSE
 
         logger.info("sp500_universe_fetch_start")
         sp500_tickers = await earnings_provider.get_sp500_tickers()
         if not sp500_tickers:
-            logger.warning("sp500_universe_fallback", reason="FMP returned empty S&P 500 list, using DEFAULT_UNIVERSE")
+            logger.warning(
+                "sp500_universe_fallback",
+                reason="FMP returned empty S&P 500 list, using DEFAULT_UNIVERSE",
+            )
             return self._settings.DEFAULT_UNIVERSE
 
         min_days = self._settings.earnings_window.MIN_DAYS_TO_EARNINGS
@@ -168,7 +183,10 @@ class ScanPipeline:
         )
 
         if not prefiltered:
-            logger.warning("sp500_universe_no_earnings", reason="No S&P 500 tickers have earnings in window, using full list")
+            logger.warning(
+                "sp500_universe_no_earnings",
+                reason="No S&P 500 tickers have earnings in window, using full list",
+            )
             return sp500_tickers
 
         if self._settings.prefilter.ENABLED:
@@ -245,7 +263,16 @@ class ScanPipeline:
             return result
 
         earnings = await self._registry.earnings.get_earnings_date(ticker)
-        days_to = (earnings.earnings_date - date.today()).days
+        if earnings is None and ticker.upper() != "XSP":
+            return TickerScanResult(
+                ticker=ticker,
+                classification=RecommendationClass.NO_TRADE,
+                stage_reached=ScanStage.EARNINGS_ELIGIBILITY,
+                rejection_reasons=["No earnings date found"],
+                rejection_codes=[RejectionReason.NO_CONFIRMED_EARNINGS],
+                rationale_summary=f"{ticker}: No upcoming earnings date.",
+            )
+        days_to = (earnings.earnings_date - date.today()).days if earnings else 0
 
         # Stage 2: Volatility Suitability
         vol = await self._registry.volatility.get_volatility_metrics(ticker)
@@ -279,16 +306,18 @@ class ScanPipeline:
                 stage_reached=ScanStage.OPTIONS_CHAIN_QUALITY,
                 rejection_reasons=stock_liq.rejection_reasons,
                 rejection_codes=stock_liq.rejection_codes,
-                rationale_summary=f"{ticker}: Stock liquidity insufficient. {'; '.join(stock_liq.rejection_reasons)}",
+                rationale_summary=(
+                    f"{ticker}: Stock liquidity insufficient."
+                    f" {'; '.join(stock_liq.rejection_reasons)}"
+                ),
             )
 
         # Stage 4: Options Chain Quality
         # Only fetch expirations relevant to the double calendar (near earnings)
         all_expirations = await self._registry.options.get_expirations(ticker)
-        earnings_date = earnings.earnings_date
+        earnings_date = earnings.earnings_date if earnings else date.today()
         relevant_exps = [
-            d for d in all_expirations
-            if date.today() < d <= earnings_date + timedelta(days=60)
+            d for d in all_expirations if date.today() < d <= earnings_date + timedelta(days=60)
         ]
         chain = await self._registry.options.get_options_chain(ticker, relevant_exps or None)
         if not chain.options:
@@ -308,9 +337,14 @@ class ScanPipeline:
                 ticker=ticker,
                 classification=RecommendationClass.NO_TRADE,
                 stage_reached=ScanStage.OPTIONS_CHAIN_QUALITY,
-                rejection_reasons=["Cannot find suitable front/back expirations for double calendar"],
+                rejection_reasons=[
+                    "Cannot find suitable front/back expirations for double calendar"
+                ],
                 rejection_codes=[RejectionReason.POOR_STRIKE_AVAILABILITY],
-                rationale_summary=f"{ticker}: No suitable expiration pair for double calendar structure.",
+                rationale_summary=(
+                    f"{ticker}: No suitable expiration pair"
+                    " for double calendar structure."
+                ),
             )
 
         options_liq = self._liquidity_engine.evaluate_options_liquidity(chain, front_exp, back_exp)
@@ -325,47 +359,73 @@ class ScanPipeline:
                     stage_reached=ScanStage.OPTIONS_CHAIN_QUALITY,
                     rejection_reasons=options_liq.rejection_reasons,
                     rejection_codes=options_liq.rejection_codes,
-                    rationale_summary=f"{ticker}: Options liquidity insufficient. {'; '.join(options_liq.rejection_reasons[:2])}",
+                    rationale_summary=(
+                        f"{ticker}: Options liquidity insufficient."
+                        f" {'; '.join(options_liq.rejection_reasons[:2])}"
+                    ),
                 )
 
-        # Stage 5: Full liquidity composite
-        full_liq = self._liquidity_engine.evaluate_full(price, chain, front_exp, back_exp)
-
-        # Stage 6: Strategy Selection and Scoring
+        # Stage 5 + 6: Strategy Selection and Scoring
         # The Regime Filter (Phase 4)
-        active_strategies = StrategyFactory(self._settings, self._registry).get_active_strategies()
-        best_result = None
-        best_strategy = None
+        strategy_factory = StrategyFactory(self._settings, self._registry)
 
-        # Compute base regime flags
-        front_iv = vol.front_expiry_iv or 0.0
-        back_iv = vol.back_expiry_iv or 0.0
-        ivp = vol.iv_percentile or 0.0
+        days_to = (earnings.earnings_date - date.today()).days if earnings else 0
 
-        in_backwardation = (front_iv > back_iv * 1.10)  # > 10%
-        high_absolute_iv = (ivp > 0.8) # proxy for 52-wk high
+        # V4 Layered State Machine Routing
+        layer_id = None
+        target_strategy_id = None
+        account_id = "SHENIDO"  # Default account, this could be customized later
 
-        for strategy in active_strategies:
-            # We must re-evaluate liquidity per-strategy (since expirations differ)
-            if strategy.strategy_type == "DOUBLE_CALENDAR":
-                strat_front, strat_back = front_exp, back_exp
-            else: # BUTTERFLY
-                strat_front, strat_back = front_exp, front_exp
-
-            strat_liq = self._liquidity_engine.evaluate_full(price, chain, strat_front, strat_back)
-
-            strat_score = strategy.calculate_score(
+        if ticker.upper() == "XSP":
+            target_strategy_id = "IRON_BUTTERFLY_ATM"
+            layer_id = "L4"
+            account_id = "IBKR_PERSONAL"
+        elif days_to >= 7:
+            # Phase 1: Pre-Earnings Anticipation (Long Vega)
+            target_strategy_id = "DOUBLE_CALENDAR"
+            layer_id = "L1"
+        elif 0 <= days_to <= 2:
+            # Phase 2: Imminent Earnings (Short Vega / IV Crush)
+            target_strategy_id = "IRON_BUTTERFLY_ATM"
+            layer_id = "L2"
+        elif -3 <= days_to < 0:
+            # Phase 3: Post-Earnings Drift
+            target_strategy_id = "IRON_BUTTERFLY_BULLISH"
+            layer_id = "L3"
+        else:
+            # Not in a valid phase window (e.g., days_to is 3, 4, 5, 6)
+            return TickerScanResult(
                 ticker=ticker,
-                earnings=earnings,
-                price=price,
-                vol=vol,
-                chain=chain,
-                liquidity=strat_liq,
+                classification=RecommendationClass.NO_TRADE,
+                stage_reached=ScanStage.EARNINGS_ELIGIBILITY,
+                rejection_reasons=[f"Days to earnings ({days_to}) not in a valid phase window"],
+                rejection_codes=[RejectionReason.EARNINGS_TOO_CLOSE],
+                rationale_summary=(
+                    f"{ticker}: {days_to} days to earnings does not fit"
+                    " Phase 1 (>=7), Phase 2 (0-2), or Phase 3 (-3 to -1)."
+                ),
             )
 
-            if best_result is None or strat_score.overall_score > best_result.overall_score:
-                best_result = strat_score
-                best_strategy = strategy.strategy_type
+        # Execute scoring specifically for the State Machine target
+        strategy = strategy_factory.get_strategy(target_strategy_id)
+
+        # We must re-evaluate liquidity per-strategy (since expirations differ)
+        if target_strategy_id == "DOUBLE_CALENDAR":
+            strat_front, strat_back = front_exp, back_exp
+        else:  # BUTTERFLY
+            strat_front, strat_back = front_exp, front_exp
+
+        strat_liq = self._liquidity_engine.evaluate_full(price, chain, strat_front, strat_back)
+
+        best_result = strategy.calculate_score(
+            ticker=ticker,
+            earnings=earnings,
+            price=price,
+            vol=vol,
+            chain=chain,
+            liquidity=strat_liq,
+        )
+        best_strategy = target_strategy_id
 
         # Re-classify based on final score
         if best_result.overall_score >= self._settings.scoring.RECOMMEND_THRESHOLD:
@@ -381,6 +441,7 @@ class ScanPipeline:
             classification=best_result.classification,
             score=best_result.overall_score,
             strategy=best_strategy,
+            layer=layer_id,
             rationale=best_result.rationale_summary,
         )
 
@@ -392,9 +453,14 @@ class ScanPipeline:
             scoring_result=best_result,
             rationale_summary=best_result.rationale_summary,
             strategy_type=best_strategy,
+            layer_id=layer_id,
+            account_id=account_id,
         )
 
     async def _check_earnings(self, ticker: str) -> TickerScanResult | None:
+        if ticker.upper() == "XSP":
+            return None  # XSP doesn't have traditional earnings, let it pass
+
         earnings = await self._registry.earnings.get_earnings_date(ticker)
 
         if earnings is None:
@@ -409,16 +475,8 @@ class ScanPipeline:
 
         days_to = (earnings.earnings_date - date.today()).days
 
-        if days_to < self._settings.earnings_window.MIN_DAYS_TO_EARNINGS:
-            return TickerScanResult(
-                ticker=ticker,
-                classification=RecommendationClass.NO_TRADE,
-                stage_reached=ScanStage.EARNINGS_ELIGIBILITY,
-                rejection_reasons=[f"Earnings too close: {days_to} days"],
-                rejection_codes=[RejectionReason.EARNINGS_TOO_CLOSE],
-                rationale_summary=f"{ticker}: Earnings in {days_to}d, below min {self._settings.earnings_window.MIN_DAYS_TO_EARNINGS}d.",
-            )
-
+        # Updated Layered State Machine Boundaries
+        # We allow up to MAX_DAYS_TO_EARNINGS, and down to -3 days (T+3)
         if days_to > self._settings.earnings_window.MAX_DAYS_TO_EARNINGS:
             return TickerScanResult(
                 ticker=ticker,
@@ -426,7 +484,20 @@ class ScanPipeline:
                 stage_reached=ScanStage.EARNINGS_ELIGIBILITY,
                 rejection_reasons=[f"Earnings too far: {days_to} days"],
                 rejection_codes=[RejectionReason.EARNINGS_TOO_FAR],
-                rationale_summary=f"{ticker}: Earnings in {days_to}d, above max {self._settings.earnings_window.MAX_DAYS_TO_EARNINGS}d.",
+                rationale_summary=(
+                    f"{ticker}: Earnings in {days_to}d,"
+                    f" above max {self._settings.earnings_window.MAX_DAYS_TO_EARNINGS}d."
+                ),
+            )
+
+        if days_to < -3:
+            return TickerScanResult(
+                ticker=ticker,
+                classification=RecommendationClass.NO_TRADE,
+                stage_reached=ScanStage.EARNINGS_ELIGIBILITY,
+                rejection_reasons=[f"Earnings passed: {days_to} days"],
+                rejection_codes=[RejectionReason.EARNINGS_TOO_CLOSE],
+                rationale_summary=f"{ticker}: Earnings passed {abs(days_to)}d ago.",
             )
 
         if (
@@ -440,31 +511,44 @@ class ScanPipeline:
                 stage_reached=ScanStage.EARNINGS_ELIGIBILITY,
                 rejection_reasons=["Unverified earnings date in strict mode"],
                 rejection_codes=[RejectionReason.NO_CONFIRMED_EARNINGS],
-                rationale_summary=f"{ticker}: Unverified earnings date. Rejected under strict mode.",
+                rationale_summary=(
+                    f"{ticker}: Unverified earnings date."
+                    " Rejected under strict mode."
+                ),
             )
 
         return None  # passed
 
-    def _select_expirations(
-        self, chain, earnings, days_to: int
-    ) -> tuple[date | None, date | None]:
+    def _select_expirations(self, chain, earnings, days_to: int) -> tuple[date | None, date | None]:
         today = date.today()
-        earnings_date = earnings.earnings_date
-        exit_date = earnings_date  # simplified: exit day before
+        earnings_date = earnings.earnings_date if earnings else today
 
         available = sorted(chain.expirations)
         if not available:
             return None, None
 
+        # For non-earnings plays (like XSP), just pick the closest expiration and 14 days out
+        if not earnings:
+            valid = [d for d in available if d > today]
+            if valid:
+                front = valid[0]
+                back_candidates = [
+                    d for d in valid if d >= front + timedelta(days=14)
+                ]
+                back = (
+                    back_candidates[0]
+                    if back_candidates
+                    else (valid[1] if len(valid) > 1 else None)
+                )
+                return front, back
+            return None, None
+
         # Front expiration: closest expiry ON or AFTER earnings (sell short-dated)
         # This captures the elevated IV that will crush after the event
-        front_candidates = [
-            d for d in available
-            if d >= earnings_date
-        ]
+        front_candidates = [d for d in available if d >= earnings_date]
 
         # Back expiration: at least 14 days after front expiration (buy longer-dated)
-        min_gap = __import__("datetime").timedelta(days=14)
+        min_gap = timedelta(days=14)
         back_candidates = []
         if front_candidates:
             front = front_candidates[0]

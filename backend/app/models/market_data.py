@@ -21,9 +21,7 @@ class Price(Base):
     volume: Mapped[int] = mapped_column(Integer, nullable=False)
     avg_dollar_volume: Mapped[float | None] = mapped_column(Float)
     source: Mapped[str] = mapped_column(String(50), nullable=False)
-    fetched_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class VolatilityMetric(Base):
@@ -42,6 +40,4 @@ class VolatilityMetric(Base):
     back_expiry_iv: Mapped[float | None] = mapped_column(Float)
     term_structure_slope: Mapped[float | None] = mapped_column(Float)
     source: Mapped[str] = mapped_column(String(50), nullable=False)
-    fetched_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

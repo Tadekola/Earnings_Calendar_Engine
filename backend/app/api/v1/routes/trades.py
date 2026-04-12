@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
-from app.core.errors import raise_not_found
+from app.core.errors import raise_bad_request, raise_not_found
 from app.schemas.trade import (
     RecommendedTradeResponse,
     TradeBuildRequest,
@@ -17,24 +17,24 @@ router = APIRouter(prefix="/trades", tags=["trades"])
 def _to_response(trade: ConstructedTrade) -> RecommendedTradeResponse:
     legs = [
         TradeLegResponse(
-            leg_number=l.leg_number,
-            option_type=l.option_type,
-            side=l.side,
-            strike=l.strike,
-            expiration=l.expiration,
-            quantity=l.quantity,
-            bid=l.bid,
-            ask=l.ask,
-            mid=l.mid,
-            implied_volatility=l.option.implied_volatility if l.option else None,
-            delta=l.option.delta if l.option else None,
-            theta=l.option.theta if l.option else None,
-            vega=l.option.vega if l.option else None,
-            open_interest=l.option.open_interest if l.option else None,
-            volume=l.option.volume if l.option else None,
-            spread_to_mid=l.spread_to_mid,
+            leg_number=leg.leg_number,
+            option_type=leg.option_type,
+            side=leg.side,
+            strike=leg.strike,
+            expiration=leg.expiration,
+            quantity=leg.quantity,
+            bid=leg.bid,
+            ask=leg.ask,
+            mid=leg.mid,
+            implied_volatility=leg.option.implied_volatility if leg.option else None,
+            delta=leg.option.delta if leg.option else None,
+            theta=leg.option.theta if leg.option else None,
+            vega=leg.option.vega if leg.option else None,
+            open_interest=leg.option.open_interest if leg.option else None,
+            volume=leg.option.volume if leg.option else None,
+            spread_to_mid=leg.spread_to_mid,
         )
-        for l in trade.legs
+        for leg in trade.legs
     ]
     return RecommendedTradeResponse(
         ticker=trade.ticker,
@@ -64,7 +64,9 @@ def _to_response(trade: ConstructedTrade) -> RecommendedTradeResponse:
 
 
 @router.get("/{ticker}/recommended", response_model=RecommendedTradeResponse)
-async def get_recommended_trade(request: Request, ticker: str, strategy: str | None = None) -> RecommendedTradeResponse:
+async def get_recommended_trade(
+    request: Request, ticker: str, strategy: str | None = None
+) -> RecommendedTradeResponse:
     ticker = ticker.upper()
     settings = request.app.state.settings
     registry = request.app.state.provider_registry
@@ -72,10 +74,13 @@ async def get_recommended_trade(request: Request, ticker: str, strategy: str | N
     engine = TradeConstructionEngine(settings, registry)
     if strategy:
         from app.services.base_strategy import StrategyFactory
+
         strategies = StrategyFactory(settings, registry).get_active_strategies()
-        selected_strat = next((s for s in strategies if s.strategy_type.upper() == strategy.upper()), None)
+        selected_strat = next(
+            (s for s in strategies if s.strategy_type.upper() == strategy.upper()), None
+        )
         if selected_strat:
-            engine._strategy = selected_strat
+            engine = TradeConstructionEngine(settings, registry, selected_strat)
 
     try:
         trade = await engine.build_recommended(ticker)
@@ -90,6 +95,16 @@ async def build_trade(request: Request, body: TradeBuildRequest) -> RecommendedT
     registry = request.app.state.provider_registry
 
     engine = TradeConstructionEngine(settings, registry)
+    if body.strategy_type:
+        from app.services.base_strategy import StrategyFactory
+
+        strategies = StrategyFactory(settings, registry).get_active_strategies()
+        selected_strat = next(
+            (s for s in strategies if s.strategy_type.upper() == body.strategy_type.upper()), None
+        )
+        if selected_strat:
+            engine = TradeConstructionEngine(settings, registry, selected_strat)
+
     try:
         trade = await engine.build_custom(
             ticker=body.ticker.upper(),
@@ -104,19 +119,40 @@ async def build_trade(request: Request, body: TradeBuildRequest) -> RecommendedT
 
 
 @router.post("/reprice", response_model=RecommendedTradeResponse)
-async def reprice_trade(request: Request, body: TradeRepriceRequest) -> RecommendedTradeResponse:
+async def reprice_trade(request: Request, req: TradeRepriceRequest) -> RecommendedTradeResponse:
     settings = request.app.state.settings
     registry = request.app.state.provider_registry
 
-    engine = TradeConstructionEngine(settings, registry)
     try:
-        trade = await engine.build_custom(
-            ticker=body.ticker.upper(),
-            lower_strike=body.lower_strike,
-            upper_strike=body.upper_strike,
-            short_expiry=body.short_expiry,
-            long_expiry=body.long_expiry,
+        from app.services.base_strategy import StrategyFactory
+
+        strategy_factory = StrategyFactory(settings, registry)
+        strat_id = req.strategy_type or "DOUBLE_CALENDAR"
+        strategy = strategy_factory.get_strategy(strat_id)
+
+        # We need the underlying data to rebuild
+        earnings = await registry.earnings.get_earnings_date(req.ticker)
+        price = await registry.price.get_current_price(req.ticker)
+        vol = await registry.volatility.get_volatility_metrics(req.ticker)
+        chain = await registry.options.get_options_chain(req.ticker)
+
+        if not price or not vol or not chain:
+            raise_bad_request("Missing data to reprice trade")
+
+        short_exp = req.short_expiry
+        long_exp = req.long_expiry
+
+        trade = strategy.build_trade_structure(
+            ticker=req.ticker,
+            earnings=earnings,
+            price=price,
+            vol=vol,
+            chain=chain,
+            override_lower=req.lower_strike,
+            override_upper=req.upper_strike,
+            override_short_exp=short_exp,
+            override_long_exp=long_exp,
         )
     except ValueError:
-        raise_not_found("Trade", body.ticker)
+        raise_not_found("Trade", req.ticker)
     return _to_response(trade)

@@ -48,27 +48,49 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
 
         if chain.expirations and chain.options:
             sorted_exps = sorted(chain.expirations)
-            front_exp = sorted_exps[0] if sorted_exps else None
-            back_exp = sorted_exps[1] if len(sorted_exps) > 1 else None
+            # Pick trade-relevant expirations:
+            #   front = nearest expiry ≥7 days out (typical short leg)
+            #   back  = nearest expiry ≥28 days out (typical long leg)
+            front_exp = self._nearest_exp(sorted_exps, today, 7)
+            back_exp = self._nearest_exp(sorted_exps, today, 28)
+            # Fallback: first two if we can't find good ones
+            if front_exp is None and sorted_exps:
+                front_exp = sorted_exps[0]
+            if back_exp is None and len(sorted_exps) > 1:
+                back_exp = sorted_exps[-1]
+            # Ensure they are different
+            if front_exp == back_exp and len(sorted_exps) > 1:
+                back_exp = sorted_exps[-1]
 
             if front_exp:
                 front_iv = self._atm_iv(chain.options, spot, front_exp)
             if back_exp:
                 back_iv = self._atm_iv(chain.options, spot, back_exp)
 
-            if front_iv and back_iv and front_iv > 0:
-                term_slope = round((back_iv - front_iv) / front_iv, 4)
+            # term_structure_slope: positive = contango (back > front),
+            # negative = backwardation (front > back, good for calendars)
+            if front_iv and back_iv and back_iv > 0:
+                term_slope = round(
+                    (back_iv - front_iv) / back_iv, 4
+                )
 
-            # IV rank/percentile approximation from realized vol
-            all_ivs = [
+            # IV rank: percentile of ATM IV within the chain's
+            # full IV distribution (0 = lowest, 1 = highest)
+            all_ivs = sorted([
                 o.implied_volatility
                 for o in chain.options
-                if o.implied_volatility is not None and o.implied_volatility > 0
-            ]
-            if all_ivs and rv_30:
+                if o.implied_volatility is not None
+                and o.implied_volatility > 0
+            ])
+            atm_iv = front_iv or back_iv
+            if all_ivs and atm_iv:
+                rank_pos = sum(1 for iv in all_ivs if iv <= atm_iv)
+                iv_rank = round(rank_pos / len(all_ivs), 4)
+            if all_ivs and rv_30 and rv_30 > 0:
                 median_iv = float(np.median(all_ivs))
-                iv_rank = round(min(max(median_iv / (rv_30 * 1.5), 0), 1), 4) if rv_30 > 0 else None
-                iv_pct = round(min(max((median_iv - rv_30 * 0.5) / (rv_30 * 1.0), 0), 1), 4) if rv_30 > 0 else None
+                iv_pct = round(
+                    min(max((median_iv - rv_30) / rv_30, 0), 1), 4
+                )
 
         return VolatilitySnapshot(
             ticker=ticker.upper(),
@@ -92,7 +114,7 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
     def _realized_vol(self, history: list, window: int) -> float | None:
         if len(history) < window + 1:
             return None
-        closes = [r.close for r in history[-(window + 1):]]
+        closes = [r.close for r in history[-(window + 1) :]]
         log_returns = [math.log(closes[i] / closes[i - 1]) for i in range(1, len(closes))]
         if not log_returns:
             return None
@@ -105,27 +127,47 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
         trs = []
         for i in range(1, len(history)):
             h = history[i].high
-            l = history[i].low
+            lo = history[i].low
             pc = history[i - 1].close
-            tr = max(h - l, abs(h - pc), abs(l - pc))
+            tr = max(h - lo, abs(h - pc), abs(lo - pc))
             trs.append(tr)
         if len(trs) < window:
             return None
         return round(float(np.mean(trs[-window:])), 4)
 
+    @staticmethod
+    def _nearest_exp(
+        sorted_exps: list[date], today: date, min_days: int
+    ) -> date | None:
+        """Return the nearest expiration that is at least min_days out."""
+        target = today + timedelta(days=min_days)
+        for exp in sorted_exps:
+            if exp >= target:
+                return exp
+        return None
+
     def _atm_iv(self, options: list, spot: float, expiration: date) -> float | None:
-        """Get ATM implied volatility for a given expiration."""
+        """Get ATM implied volatility for a given expiration.
+
+        Averages the ATM call and put IVs when both are available
+        for a more stable reading.
+        """
         candidates = [
-            o for o in options
+            o
+            for o in options
             if o.expiration == expiration
             and o.implied_volatility is not None
             and o.implied_volatility > 0
         ]
         if not candidates:
             return None
-        # Find closest to ATM
-        atm = min(candidates, key=lambda o: abs(o.strike - spot))
-        return round(atm.implied_volatility, 4)
+        # Find closest strike to ATM
+        atm_strike = min(candidates, key=lambda o: abs(o.strike - spot)).strike
+        atm_opts = [o for o in candidates if o.strike == atm_strike]
+        if not atm_opts:
+            return None
+        avg_iv = sum(o.implied_volatility for o in atm_opts) / len(atm_opts)
+        return round(avg_iv, 4)
 
     async def health_check(self) -> ProviderMeta:
         return ProviderMeta(

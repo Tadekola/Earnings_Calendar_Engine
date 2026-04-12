@@ -1,4 +1,5 @@
 """Persist and load user setting overrides from the app_settings DB table."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -17,17 +18,57 @@ logger = get_logger(__name__)
 SETTING_MAP: dict[str, tuple[str, str, str]] = {
     "operating_mode": ("OPERATING_MODE", "core", "Operating mode: STRICT or GRACEFUL"),
     "universe_source": ("data.UNIVERSE_SOURCE", "core", "Universe source: STATIC or SP500"),
-    "recommend_threshold": ("scoring.RECOMMEND_THRESHOLD", "scoring", "Score threshold for RECOMMEND"),
-    "watchlist_threshold": ("scoring.WATCHLIST_THRESHOLD", "scoring", "Score threshold for WATCHLIST"),
-    "min_days_to_earnings": ("earnings_window.MIN_DAYS_TO_EARNINGS", "earnings", "Minimum days before earnings"),
-    "max_days_to_earnings": ("earnings_window.MAX_DAYS_TO_EARNINGS", "earnings", "Maximum days before earnings"),
-    "exit_days_before_earnings": ("earnings_window.EXIT_DAYS_BEFORE_EARNINGS", "earnings", "Days before earnings to exit"),
-    "min_avg_stock_volume": ("liquidity.MIN_AVG_STOCK_VOLUME", "liquidity", "Minimum average stock volume"),
-    "min_avg_option_volume": ("liquidity.MIN_AVG_OPTION_VOLUME", "liquidity", "Minimum average option volume"),
+    "recommend_threshold": (
+        "scoring.RECOMMEND_THRESHOLD",
+        "scoring",
+        "Score threshold for RECOMMEND",
+    ),
+    "watchlist_threshold": (
+        "scoring.WATCHLIST_THRESHOLD",
+        "scoring",
+        "Score threshold for WATCHLIST",
+    ),
+    "min_days_to_earnings": (
+        "earnings_window.MIN_DAYS_TO_EARNINGS",
+        "earnings",
+        "Minimum days before earnings",
+    ),
+    "max_days_to_earnings": (
+        "earnings_window.MAX_DAYS_TO_EARNINGS",
+        "earnings",
+        "Maximum days before earnings",
+    ),
+    "exit_days_before_earnings": (
+        "earnings_window.EXIT_DAYS_BEFORE_EARNINGS",
+        "earnings",
+        "Days before earnings to exit",
+    ),
+    "min_avg_stock_volume": (
+        "liquidity.MIN_AVG_STOCK_VOLUME",
+        "liquidity",
+        "Minimum average stock volume",
+    ),
+    "min_avg_option_volume": (
+        "liquidity.MIN_AVG_OPTION_VOLUME",
+        "liquidity",
+        "Minimum average option volume",
+    ),
     "prefilter_enabled": ("prefilter.ENABLED", "prefilter", "Enable SP500 quality pre-filter"),
-    "prefilter_min_price": ("prefilter.MIN_STOCK_PRICE", "prefilter", "Min stock price for SP500 pre-filter"),
-    "prefilter_min_mktcap_b": ("prefilter.MIN_MARKET_CAP_B", "prefilter", "Min market cap (billions) for SP500 pre-filter"),
-    "prefilter_require_weeklies": ("prefilter.REQUIRE_WEEKLY_OPTIONS", "prefilter", "Require weekly options for SP500 pre-filter"),
+    "prefilter_min_price": (
+        "prefilter.MIN_STOCK_PRICE",
+        "prefilter",
+        "Min stock price for SP500 pre-filter",
+    ),
+    "prefilter_min_mktcap_b": (
+        "prefilter.MIN_MARKET_CAP_B",
+        "prefilter",
+        "Min market cap (billions) for SP500 pre-filter",
+    ),
+    "prefilter_require_weeklies": (
+        "prefilter.REQUIRE_WEEKLY_OPTIONS",
+        "prefilter",
+        "Require weekly options for SP500 pre-filter",
+    ),
 }
 
 
@@ -54,13 +95,15 @@ class SettingsPersistenceService:
                 existing.updated_at = datetime.now(UTC)
                 existing.updated_by = "user"
             else:
-                self._session.add(AppSetting(
-                    key=key,
-                    value=str_value,
-                    category=category,
-                    description=description,
-                    updated_by="user",
-                ))
+                self._session.add(
+                    AppSetting(
+                        key=key,
+                        value=str_value,
+                        category=category,
+                        description=description,
+                        updated_by="user",
+                    )
+                )
             count += 1
 
         if count > 0:
@@ -90,6 +133,7 @@ class SettingsPersistenceService:
     def _set_nested(obj: Any, path: str, raw_value: str) -> None:
         """Set a dotted attribute path on an object, coercing the value."""
         from enum import Enum
+
         parts = path.split(".")
         target = obj
         for part in parts[:-1]:

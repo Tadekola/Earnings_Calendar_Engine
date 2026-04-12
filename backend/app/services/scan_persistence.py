@@ -45,9 +45,7 @@ class ScanPersistenceService:
         )
         return db_run.id
 
-    async def _save_ticker_result(
-        self, run_id: str, result: TickerScanResult
-    ) -> None:
+    async def _save_ticker_result(self, run_id: str, result: TickerScanResult) -> None:
         db_result = ScanResult(
             scan_run_id=run_id,
             ticker=result.ticker,
@@ -55,7 +53,11 @@ class ScanPersistenceService:
             classification=result.classification.value,
             overall_score=result.overall_score,
             strategy_type=result.strategy_type,
-            rejection_reasons="; ".join(result.rejection_reasons) if result.rejection_reasons else None,
+            layer_id=result.layer_id,
+            account_id=result.account_id,
+            rejection_reasons="; ".join(result.rejection_reasons)
+            if result.rejection_reasons
+            else None,
             rationale_summary=result.rationale_summary,
             processing_time_ms=result.processing_time_ms,
         )
@@ -83,6 +85,8 @@ class ScanPersistenceService:
             db_score = CandidateScore(
                 scan_run_id=run_id,
                 ticker=result.ticker,
+                layer_id=result.layer_id,
+                account_id=result.account_id,
                 liquidity_score=factor_map.get("Liquidity Quality", _dummy()).raw_score,
                 earnings_timing_score=factor_map.get("Earnings Timing", _dummy()).raw_score,
                 vol_term_structure_score=factor_map.get("Vol Term Structure", _dummy()).raw_score,
@@ -98,18 +102,21 @@ class ScanPersistenceService:
 
     async def get_latest_run(self) -> ScanRun | None:
         from sqlalchemy import select
+
         stmt = select(ScanRun).order_by(ScanRun.started_at.desc()).limit(1)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def get_run_results(self, run_id: str) -> list[ScanResult]:
         from sqlalchemy import select
+
         stmt = select(ScanResult).where(ScanResult.scan_run_id == run_id)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
     async def get_candidate_scores(self, run_id: str) -> list[CandidateScore]:
         from sqlalchemy import select
+
         stmt = select(CandidateScore).where(CandidateScore.scan_run_id == run_id)
         result = await self._session.execute(stmt)
         return list(result.scalars().all())

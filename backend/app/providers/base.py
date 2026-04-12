@@ -18,7 +18,9 @@ class ProviderMeta:
     def is_fresh(self) -> bool:
         if self.freshness_timestamp is None:
             return False
-        age_seconds = (datetime.now(self.freshness_timestamp.tzinfo) - self.freshness_timestamp).total_seconds()
+        age_seconds = (
+            datetime.now(self.freshness_timestamp.tzinfo) - self.freshness_timestamp
+        ).total_seconds()
         return age_seconds < 3600
 
     @property
@@ -100,65 +102,52 @@ class EarningsCalendarProvider(ABC):
     @abstractmethod
     async def get_upcoming_earnings(
         self, tickers: list[str], days_ahead: int = 30
-    ) -> list[EarningsRecord]:
-        ...
+    ) -> list[EarningsRecord]: ...
 
     @abstractmethod
-    async def get_earnings_date(self, ticker: str) -> EarningsRecord | None:
-        ...
+    async def get_earnings_date(self, ticker: str) -> EarningsRecord | None: ...
 
     @abstractmethod
-    async def health_check(self) -> ProviderMeta:
-        ...
+    async def health_check(self) -> ProviderMeta: ...
 
 
 class PriceProvider(ABC):
     @abstractmethod
-    async def get_current_price(self, ticker: str) -> PriceRecord | None:
-        ...
+    async def get_current_price(self, ticker: str) -> PriceRecord | None: ...
 
     @abstractmethod
     async def get_price_history(
         self, ticker: str, start_date: date, end_date: date
-    ) -> list[PriceRecord]:
-        ...
+    ) -> list[PriceRecord]: ...
 
     @abstractmethod
-    async def health_check(self) -> ProviderMeta:
-        ...
+    async def health_check(self) -> ProviderMeta: ...
 
 
 class OptionsChainProvider(ABC):
     @abstractmethod
     async def get_options_chain(
         self, ticker: str, expirations: list[date] | None = None
-    ) -> OptionsChainSnapshot:
-        ...
+    ) -> OptionsChainSnapshot: ...
 
     @abstractmethod
-    async def get_expirations(self, ticker: str) -> list[date]:
-        ...
+    async def get_expirations(self, ticker: str) -> list[date]: ...
 
     @abstractmethod
-    async def health_check(self) -> ProviderMeta:
-        ...
+    async def health_check(self) -> ProviderMeta: ...
 
 
 class VolatilityMetricsProvider(ABC):
     @abstractmethod
-    async def get_volatility_metrics(self, ticker: str) -> VolatilitySnapshot:
-        ...
+    async def get_volatility_metrics(self, ticker: str) -> VolatilitySnapshot: ...
 
     @abstractmethod
-    async def health_check(self) -> ProviderMeta:
-        ...
+    async def health_check(self) -> ProviderMeta: ...
 
 
 class MacroEventProvider(ABC):
     @abstractmethod
-    async def get_upcoming_events(self, days_ahead: int = 14) -> list[dict[str, Any]]:
-        ...
+    async def get_upcoming_events(self, days_ahead: int = 14) -> list[dict[str, Any]]: ...
 
     @abstractmethod
-    async def health_check(self) -> ProviderMeta:
-        ...
+    async def health_check(self) -> ProviderMeta: ...

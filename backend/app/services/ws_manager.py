@@ -1,4 +1,5 @@
 """WebSocket connection manager for broadcasting scan progress events."""
+
 from __future__ import annotations
 
 import asyncio

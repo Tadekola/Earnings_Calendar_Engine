@@ -49,11 +49,14 @@ class RecommendedTradeResponse(BaseModel):
     key_risks: list[str] = []
     risk_disclaimer: str
     strategy_type: str = "DOUBLE_CALENDAR"
+    layer_id: str | None = None
+    account_id: str | None = None
     legs: list[TradeLegResponse] = []
 
 
 class TradeBuildRequest(BaseModel):
     ticker: str
+    strategy_type: str | None = None
     lower_strike: float | None = None
     upper_strike: float | None = None
     short_expiry: date | None = None
@@ -63,6 +66,7 @@ class TradeBuildRequest(BaseModel):
 
 class TradeRepriceRequest(BaseModel):
     ticker: str
+    strategy_type: str | None = None
     lower_strike: float
     upper_strike: float
     short_expiry: date
