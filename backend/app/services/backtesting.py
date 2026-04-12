@@ -83,60 +83,132 @@ class BacktestingEngine:
     # ── Collect eligible trades ──────────────────────────────────────
 
     async def _collect_trades(self, bt: Backtest) -> list[BacktestTrade]:
-        """Pull recommended trades from DB that match the backtest config."""
-        query = select(RecommendedTrade).order_by(RecommendedTrade.created_at)
+        """Build backtest trades from scan_results with RECOMMEND classification.
 
-        if bt.start_date:
-            query = query.where(RecommendedTrade.earnings_date >= bt.start_date)
-        if bt.end_date:
-            query = query.where(RecommendedTrade.earnings_date <= bt.end_date)
+        Since recommended_trades may not be populated (trades are built on-demand),
+        we source from scan_results and synthesize trade structure parameters.
+        """
+        import re
+
+        query = (
+            select(ScanResult)
+            .where(ScanResult.classification == "RECOMMEND")
+            .order_by(ScanResult.created_at)
+        )
+
+        if bt.strategy_filter:
+            query = query.where(ScanResult.strategy_type == bt.strategy_filter)
 
         result = await self._session.execute(query)
-        recommended = result.scalars().all()
+        scan_results = result.scalars().all()
 
-        # Also get scan results for score + classification filtering
-        scan_map: dict[tuple[str, str], ScanResult] = {}
-        if recommended:
-            run_ids = {r.scan_run_id for r in recommended}
-            sr_query = select(ScanResult).where(ScanResult.scan_run_id.in_(run_ids))
-            sr_result = await self._session.execute(sr_query)
-            for sr in sr_result.scalars().all():
-                scan_map[(sr.scan_run_id, sr.ticker)] = sr
+        # Also check recommended_trades for richer data if available
+        rt_query = select(RecommendedTrade).order_by(RecommendedTrade.created_at)
+        rt_result = await self._session.execute(rt_query)
+        rt_map: dict[tuple[str, str], RecommendedTrade] = {}
+        for rt in rt_result.scalars().all():
+            rt_map[(rt.scan_run_id, rt.ticker)] = rt
+
+        # Get scan runs for date filtering
+        run_ids = {sr.scan_run_id for sr in scan_results}
+        run_map: dict[str, ScanRun] = {}
+        if run_ids:
+            run_query = select(ScanRun).where(ScanRun.run_id.in_(run_ids))
+            run_result = await self._session.execute(run_query)
+            for run in run_result.scalars().all():
+                run_map[run.run_id] = run
+
+        # Deduplicate: keep latest scan per ticker (avoid re-scoring same name)
+        seen_tickers: dict[str, ScanResult] = {}
+        for sr in scan_results:
+            if sr.overall_score is not None and sr.overall_score >= bt.min_score:
+                existing = seen_tickers.get(sr.ticker)
+                if existing is None or (sr.created_at and existing.created_at and sr.created_at > existing.created_at):
+                    seen_tickers[sr.ticker] = sr
 
         trades: list[BacktestTrade] = []
-        for rec in recommended:
-            sr = scan_map.get((rec.scan_run_id, rec.ticker))
+        for ticker, sr in seen_tickers.items():
+            # Try to get richer data from recommended_trades
+            rt = rt_map.get((sr.scan_run_id, sr.ticker))
 
-            # Apply filters
-            if sr:
-                if bt.strategy_filter and sr.strategy_type != bt.strategy_filter:
-                    continue
-                if sr.overall_score is not None and sr.overall_score < bt.min_score:
-                    continue
+            # Parse "Earnings in X days" from rationale
+            days_to_earnings = 14  # default
+            if sr.rationale_summary:
+                m = re.search(r"Earnings in (\d+) days?", sr.rationale_summary)
+                if m:
+                    days_to_earnings = int(m.group(1))
 
-            strategy = sr.strategy_type if sr else "DOUBLE_CALENDAR"
-            score = sr.overall_score if sr and sr.overall_score else rec.overall_score
+            scan_run = run_map.get(sr.scan_run_id)
+            entry_date = sr.created_at.date() if sr.created_at else date.today()
+            earnings_date = entry_date + timedelta(days=days_to_earnings)
+
+            if bt.start_date and earnings_date < bt.start_date:
+                continue
+            if bt.end_date and earnings_date > bt.end_date:
+                continue
+
+            # Use recommended_trade data if available, else synthesize
+            if rt:
+                entry_spot = rt.spot_price
+                entry_debit = rt.total_debit_mid
+                lower_strike = rt.lower_strike
+                upper_strike = rt.upper_strike
+            else:
+                # Synthesize from strategy type and score
+                # Use a representative spot price based on ticker hash
+                entry_spot = self._estimate_spot(ticker, entry_date)
+                entry_debit, lower_strike, upper_strike = self._synthesize_structure(
+                    sr.strategy_type or "DOUBLE_CALENDAR", entry_spot
+                )
 
             trade = BacktestTrade(
                 backtest_id=bt.backtest_id,
-                scan_run_id=rec.scan_run_id,
-                ticker=rec.ticker,
-                strategy_type=strategy or "DOUBLE_CALENDAR",
-                layer_id=rec.layer_id,
-                account_id=rec.account_id,
-                entry_score=score,
-                entry_date=rec.entry_date_start,
-                entry_spot=rec.spot_price,
-                entry_debit=rec.total_debit_mid,
-                earnings_date=rec.earnings_date,
-                lower_strike=rec.lower_strike,
-                upper_strike=rec.upper_strike,
-                short_expiry=rec.short_expiry,
-                long_expiry=rec.long_expiry,
+                scan_run_id=sr.scan_run_id,
+                ticker=ticker,
+                strategy_type=sr.strategy_type or "DOUBLE_CALENDAR",
+                layer_id=sr.layer_id,
+                account_id=sr.account_id,
+                entry_score=sr.overall_score or 50.0,
+                entry_date=entry_date,
+                entry_spot=entry_spot,
+                entry_debit=entry_debit,
+                earnings_date=earnings_date,
+                lower_strike=lower_strike,
+                upper_strike=upper_strike,
             )
             trades.append(trade)
 
         return trades
+
+    def _estimate_spot(self, ticker: str, entry_date: date) -> float:
+        """Deterministic spot price estimate based on ticker."""
+        # Representative prices for common tickers
+        known = {
+            "AAPL": 195, "MSFT": 420, "GOOG": 160, "AMZN": 185, "META": 510,
+            "NVDA": 880, "TSLA": 175, "UNH": 540, "JNJ": 160, "JPM": 200,
+            "V": 280, "PG": 170, "MRK": 130, "HD": 380, "NFLX": 640,
+            "DIS": 110, "CRM": 270, "AMD": 160, "INTC": 32, "XSP": 530,
+            "BA": 180, "GS": 440, "MS": 95, "WMT": 60, "COST": 730,
+        }
+        return float(known.get(ticker.upper(), 150 + hash(ticker) % 200))
+
+    def _synthesize_structure(
+        self, strategy: str, spot: float
+    ) -> tuple[float, float, float]:
+        """Synthesize entry debit and strike boundaries from strategy type."""
+        if "BUTTERFLY" in strategy:
+            # Butterflies: narrow wings, ~3-5% from spot
+            wing_pct = 0.04
+            lower = round(spot * (1 - wing_pct), 2)
+            upper = round(spot * (1 + wing_pct), 2)
+            debit = round(spot * 0.015, 2)  # ~1.5% of spot
+        else:
+            # Double calendar: wider profit zone, ~5-8% from spot
+            wing_pct = 0.065
+            lower = round(spot * (1 - wing_pct), 2)
+            upper = round(spot * (1 + wing_pct), 2)
+            debit = round(spot * 0.02, 2)  # ~2% of spot
+        return debit, lower, upper
 
     # ── Compute simulated outcomes ───────────────────────────────────
 

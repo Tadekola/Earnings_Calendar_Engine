@@ -54,7 +54,7 @@ async def get_backtest_analytics(
     return await engine.get_analytics(backtest_id)
 
 
-@router.delete("/{backtest_id}", status_code=204)
+@router.delete("/{backtest_id}", status_code=204, response_model=None)
 async def delete_backtest(
     backtest_id: str,
     db: AsyncSession = Depends(get_db),
