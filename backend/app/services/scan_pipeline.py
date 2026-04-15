@@ -16,6 +16,7 @@ from app.core.enums import (
     UniverseSource,
 )
 from app.core.logging import get_logger
+from app.providers.base import PriceRecord, ProviderMeta
 from app.providers.registry import ProviderRegistry
 from app.services.base_strategy import StrategyFactory
 from app.services.liquidity import LiquidityEngine
@@ -286,8 +287,14 @@ class ScanPipeline:
                 rationale_summary=f"{ticker}: No volatility data. Cannot assess suitability.",
             )
 
+        # Determine if this is an index product with relaxed liquidity rules
+        is_index = ticker.upper() in self._settings.liquidity.INDEX_TICKERS
+
         # Stage 3: Price + Stock Liquidity
         price = await self._registry.price.get_current_price(ticker)
+        if price is None:
+            # Fallback: try Tradier quote (covers index products like XSP)
+            price = await self._get_tradier_fallback_price(ticker)
         if price is None:
             return TickerScanResult(
                 ticker=ticker,
@@ -298,19 +305,21 @@ class ScanPipeline:
                 rationale_summary=f"{ticker}: No current price data.",
             )
 
-        stock_liq = self._liquidity_engine.evaluate_stock_liquidity(price)
-        if not stock_liq.passed:
-            return TickerScanResult(
-                ticker=ticker,
-                classification=RecommendationClass.NO_TRADE,
-                stage_reached=ScanStage.OPTIONS_CHAIN_QUALITY,
-                rejection_reasons=stock_liq.rejection_reasons,
-                rejection_codes=stock_liq.rejection_codes,
-                rationale_summary=(
-                    f"{ticker}: Stock liquidity insufficient."
-                    f" {'; '.join(stock_liq.rejection_reasons)}"
-                ),
-            )
+        # Index products have no meaningful stock volume — skip check
+        if not is_index:
+            stock_liq = self._liquidity_engine.evaluate_stock_liquidity(price)
+            if not stock_liq.passed:
+                return TickerScanResult(
+                    ticker=ticker,
+                    classification=RecommendationClass.NO_TRADE,
+                    stage_reached=ScanStage.OPTIONS_CHAIN_QUALITY,
+                    rejection_reasons=stock_liq.rejection_reasons,
+                    rejection_codes=stock_liq.rejection_codes,
+                    rationale_summary=(
+                        f"{ticker}: Stock liquidity insufficient."
+                        f" {'; '.join(stock_liq.rejection_reasons)}"
+                    ),
+                )
 
         # Stage 4: Options Chain Quality
         # Only fetch expirations relevant to the double calendar (near earnings)
@@ -347,7 +356,9 @@ class ScanPipeline:
                 ),
             )
 
-        options_liq = self._liquidity_engine.evaluate_options_liquidity(chain, front_exp, back_exp)
+        options_liq = self._liquidity_engine.evaluate_options_liquidity(
+            chain, front_exp, back_exp, is_index=is_index,
+        )
         if not options_liq.passed:
             # In graceful mode, allow watchlist even with marginal liquidity
             if self._settings.OPERATING_MODE == OperatingMode.GRACEFUL and options_liq.score >= 40:
@@ -415,7 +426,9 @@ class ScanPipeline:
         else:  # BUTTERFLY
             strat_front, strat_back = front_exp, front_exp
 
-        strat_liq = self._liquidity_engine.evaluate_full(price, chain, strat_front, strat_back)
+        strat_liq = self._liquidity_engine.evaluate_full(
+            price, chain, strat_front, strat_back, is_index=is_index,
+        )
 
         best_result = strategy.calculate_score(
             ticker=ticker,
@@ -562,3 +575,44 @@ class ScanPipeline:
             return None, None
 
         return front_candidates[0], back_candidates[0]
+
+    async def _get_tradier_fallback_price(self, ticker: str) -> PriceRecord | None:
+        """Fallback price lookup via Tradier /markets/quotes.
+        Covers index products (XSP, etc.) that FMP doesn't support."""
+        from app.providers.live.tradier import TradierOptionsProvider
+
+        options_provider = self._registry.options
+        if not isinstance(options_provider, TradierOptionsProvider):
+            return None
+
+        try:
+            data = await options_provider._request(
+                "/markets/quotes", {"symbols": ticker.upper()}
+            )
+            quotes = (data.get("quotes") or {}).get("quote", {})
+            if isinstance(quotes, list):
+                quotes = quotes[0] if quotes else {}
+            last = float(quotes.get("last", 0))
+            if last <= 0:
+                return None
+
+            return PriceRecord(
+                ticker=ticker.upper(),
+                trade_date=date.today(),
+                open=float(quotes.get("open", last)),
+                high=float(quotes.get("high", last)),
+                low=float(quotes.get("low", last)),
+                close=last,
+                volume=int(quotes.get("volume", 0)),
+                avg_dollar_volume=float(quotes.get("average_volume", 0)) * last
+                if quotes.get("average_volume")
+                else None,
+                meta=ProviderMeta(
+                    source_name="tradier_quote_fallback",
+                    freshness_timestamp=datetime.now(UTC),
+                    confidence_score=0.85,
+                ),
+            )
+        except Exception as e:
+            logger.debug("tradier_fallback_price_failed", ticker=ticker, error=str(e))
+            return None

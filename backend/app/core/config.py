@@ -104,6 +104,12 @@ class LiquiditySettings(BaseSettings):
     MIN_STRIKE_DENSITY: int = 5
     STRICT_SHORT_DATED_MULTIPLIER: float = 1.5
 
+    # Relaxed thresholds for index products (XSP, etc.)
+    INDEX_MIN_AVG_OPTION_VOLUME: int = 10
+    INDEX_MIN_OPEN_INTEREST: int = 20
+    INDEX_MAX_BID_ASK_PCT: float = 0.45
+    INDEX_TICKERS: list[str] = ["XSP"]
+
 
 class EarningsWindowSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="EARN_", env_file=str(ENV_FILE), extra="ignore")

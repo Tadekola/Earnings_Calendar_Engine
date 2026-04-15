@@ -53,11 +53,26 @@ class LiquidityEngine:
         chain: OptionsChainSnapshot,
         front_expiration: date,
         back_expiration: date,
+        is_index: bool = False,
     ) -> LiquidityCheckResult:
         reasons: list[str] = []
         codes: list[RejectionReason] = []
         details: dict[str, float] = {}
         sub_scores: list[float] = []
+
+        # Use relaxed thresholds for index products
+        min_opt_vol = (
+            self._settings.INDEX_MIN_AVG_OPTION_VOLUME if is_index
+            else self._settings.MIN_AVG_OPTION_VOLUME
+        )
+        min_oi = (
+            self._settings.INDEX_MIN_OPEN_INTEREST if is_index
+            else self._settings.MIN_OPEN_INTEREST
+        )
+        max_spread = (
+            self._settings.INDEX_MAX_BID_ASK_PCT if is_index
+            else self._settings.MAX_BID_ASK_PCT
+        )
 
         front_opts = [o for o in chain.options if o.expiration == front_expiration]
         back_opts = [o for o in chain.options if o.expiration == back_expiration]
@@ -87,13 +102,13 @@ class LiquidityEngine:
             sum(o.volume or 0 for o in all_relevant) / len(all_relevant) if all_relevant else 0
         )
         details["avg_option_volume"] = avg_vol
-        if avg_vol < self._settings.MIN_AVG_OPTION_VOLUME:
+        if avg_vol < min_opt_vol:
             reasons.append(
                 f"Avg option volume {avg_vol:.0f}"
-                f" below minimum {self._settings.MIN_AVG_OPTION_VOLUME}"
+                f" below minimum {min_opt_vol}"
             )
             codes.append(RejectionReason.POOR_OPTIONS_LIQUIDITY)
-        sub_scores.append(min(avg_vol / self._settings.MIN_AVG_OPTION_VOLUME, 2.0) / 2.0)
+        sub_scores.append(min(avg_vol / min_opt_vol, 2.0) / 2.0)
 
         # 2. Open interest
         avg_oi = (
@@ -102,15 +117,15 @@ class LiquidityEngine:
             else 0
         )  # all_relevant already ATM-filtered
         details["avg_open_interest"] = avg_oi
-        if avg_oi < self._settings.MIN_OPEN_INTEREST:
+        if avg_oi < min_oi:
             reasons.append(
-                f"Avg open interest {avg_oi:.0f} below minimum {self._settings.MIN_OPEN_INTEREST}"
+                f"Avg open interest {avg_oi:.0f} below minimum {min_oi}"
             )
             codes.append(RejectionReason.POOR_OPTIONS_LIQUIDITY)
-        sub_scores.append(min(avg_oi / self._settings.MIN_OPEN_INTEREST, 2.0) / 2.0)
+        sub_scores.append(min(avg_oi / min_oi, 2.0) / 2.0)
 
         # 3. Bid-ask spread quality (ATM-filtered)
-        spread_scores = self._evaluate_spreads(front_atm + back_atm, details)
+        spread_scores = self._evaluate_spreads(front_atm + back_atm, details, max_spread)
         if spread_scores["passed"] is False:
             reasons.extend(spread_scores["reasons"])
             codes.append(RejectionReason.WIDE_BID_ASK_SPREADS)
@@ -138,7 +153,12 @@ class LiquidityEngine:
             details=details,
         )
 
-    def _evaluate_spreads(self, options: list[OptionRecord], details: dict[str, float]) -> dict:
+    def _evaluate_spreads(
+        self,
+        options: list[OptionRecord],
+        details: dict[str, float],
+        max_spread: float | None = None,
+    ) -> dict:
         if not options:
             return {"passed": False, "score": 0.0, "reasons": ["No options to evaluate spreads"]}
 
@@ -156,19 +176,21 @@ class LiquidityEngine:
         if not spread_pcts:
             return {"passed": False, "score": 0.0, "reasons": ["No valid bid/ask data"]}
 
+        threshold = max_spread if max_spread is not None else self._settings.MAX_BID_ASK_PCT
+
         avg_spread = sum(spread_pcts) / len(spread_pcts)
         details["avg_spread_pct"] = round(avg_spread, 4)
         details["wide_spread_count"] = float(wide_count)
 
         reasons = []
-        if avg_spread > self._settings.MAX_BID_ASK_PCT:
+        if avg_spread > threshold:
             reasons.append(
                 f"Avg bid-ask spread {avg_spread:.1%}"
-                f" exceeds maximum {self._settings.MAX_BID_ASK_PCT:.1%}"
+                f" exceeds maximum {threshold:.1%}"
             )
 
         # Score inversely proportional to spread
-        spread_score = max(0, 1.0 - (avg_spread / (self._settings.MAX_BID_ASK_PCT * 2)))
+        spread_score = max(0, 1.0 - (avg_spread / (threshold * 2)))
         return {"passed": len(reasons) == 0, "score": spread_score, "reasons": reasons}
 
     def _count_atm_strikes(self, chain: OptionsChainSnapshot, expiration: date) -> int:
@@ -187,12 +209,18 @@ class LiquidityEngine:
         chain: OptionsChainSnapshot,
         front_expiration: date,
         back_expiration: date,
+        is_index: bool = False,
     ) -> LiquidityCheckResult:
-        stock_result = self.evaluate_stock_liquidity(price)
-        if not stock_result.passed:
-            return stock_result
+        if not is_index:
+            stock_result = self.evaluate_stock_liquidity(price)
+            if not stock_result.passed:
+                return stock_result
+        else:
+            stock_result = LiquidityCheckResult(passed=True, score=75.0)
 
-        options_result = self.evaluate_options_liquidity(chain, front_expiration, back_expiration)
+        options_result = self.evaluate_options_liquidity(
+            chain, front_expiration, back_expiration, is_index=is_index,
+        )
 
         # Blend scores: 30% stock, 70% options
         blended = 0.3 * stock_result.score + 0.7 * options_result.score

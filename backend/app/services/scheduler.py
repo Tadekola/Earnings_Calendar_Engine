@@ -57,10 +57,23 @@ def start_scheduler(settings: Settings, registry: ProviderRegistry) -> AsyncIOSc
 
     _scheduler = AsyncIOScheduler()
 
-    # Run at 9:00 AM CT
+    tz = "America/Chicago"
+
+    # Pre-market: 7:00 AM CT — catch overnight vol changes before open
     _scheduler.add_job(
         scheduled_scan,
-        trigger=CronTrigger(timezone="America/Chicago", day_of_week="mon-fri", hour=9, minute=0),
+        trigger=CronTrigger(timezone=tz, day_of_week="mon-fri", hour=7, minute=0),
+        args=[settings, registry],
+        id="premarket_scan",
+        name="Pre-market Scan",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+    # Morning: 9:30 AM CT — right at market open
+    _scheduler.add_job(
+        scheduled_scan,
+        trigger=CronTrigger(timezone=tz, day_of_week="mon-fri", hour=9, minute=30),
         args=[settings, registry],
         id="layered_morning_scan",
         name="V4 Layered Morning Scan",
@@ -68,10 +81,21 @@ def start_scheduler(settings: Settings, registry: ProviderRegistry) -> AsyncIOSc
         misfire_grace_time=3600,
     )
 
-    # Also run at 4:30 PM ET (21:30 UTC) on weekdays — after market close
+    # Midday: 12:30 PM CT — catch intraday vol structure shifts
     _scheduler.add_job(
         scheduled_scan,
-        trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=30),
+        trigger=CronTrigger(timezone=tz, day_of_week="mon-fri", hour=12, minute=30),
+        args=[settings, registry],
+        id="midday_scan",
+        name="Midday Scan",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+    # Post-market: 3:30 PM CT (4:30 PM ET) — after market close
+    _scheduler.add_job(
+        scheduled_scan,
+        trigger=CronTrigger(timezone=tz, day_of_week="mon-fri", hour=15, minute=30),
         args=[settings, registry],
         id="evening_scan",
         name="Evening Post-market Scan",
