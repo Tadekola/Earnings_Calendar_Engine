@@ -2,7 +2,7 @@
 
 > **An institutional-grade, fully automated Pre-Earnings Options Scanner, Scoring Engine, and Trade Builder for liquid U.S. equities and index products.**
 
-[![Tests](https://img.shields.io/badge/tests-181%20passing-brightgreen)](./backend/tests)
+[![Tests](https://img.shields.io/badge/tests-189%20passing-brightgreen)](./backend/tests)
 [![Scoring](https://img.shields.io/badge/scoring-v1.1.0-orange)](./backend/app/services/scoring.py)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://www.python.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
@@ -155,7 +155,7 @@ Butterfly candidates are scored on three factors: **IV Percentile** (weight 35),
 | **Frontend** | Next.js 14, TypeScript, Tailwind CSS, shadcn/ui, Lucide React, Recharts, React Query, Sonner toasts |
 | **Real-time** | WebSocket scan progress streaming |
 | **Logging** | structlog (structured JSON), full audit trail |
-| **Testing** | pytest, pytest-asyncio — **181 tests** across 17 test files |
+| **Testing** | pytest, pytest-asyncio — **189 tests** across 17 test files |
 | **Infra** | Docker Compose, GitHub Actions CI |
 
 ---
@@ -237,7 +237,7 @@ Earnings_Calendar_Engine/
 │   │       └── ...               # audit, persistence, settings, WS manager
 │   ├── alembic/                  # DB migrations (auto-applied on startup)
 │   ├── scripts/                  # live_validation.py + dev utilities
-│   └── tests/                    # 181 pytest tests across 17 files
+│   └── tests/                    # 189 pytest tests across 17 files
 ├── frontend/
 │   └── src/
 │       ├── app/                  # 10 Next.js pages (dashboard, scan, history,
@@ -314,7 +314,7 @@ npm run dev   # runs on http://localhost:3001
 ```bash
 cd backend
 pytest -v
-# Expected: 181 passed
+# Expected: 189 passed
 ```
 
 ---
@@ -437,7 +437,7 @@ Complete history of every scan, setting change, and data fetch with timestamps.
 
 ### Software Tests
 
-181 pytest tests across 17 test files covering:
+189 pytest tests across 17 test files covering:
 
 | Test Module | Coverage |
 |-------------|----------|
@@ -458,7 +458,7 @@ Complete history of every scan, setting change, and data fetch with timestamps.
 ```bash
 cd backend
 pytest -v
-# Expected: 181 passed
+# Expected: 189 passed
 ```
 
 ### Strategy Validation
@@ -479,7 +479,7 @@ The backtesting engine (`/api/v1/backtests`) replays historical scan recommendat
 
 | Layer | Method | Status |
 |-------|--------|--------|
-| **Software correctness** | 181 automated tests, CI pipeline, mock + live provider coverage | ✅ Complete |
+| **Software correctness** | 189 automated tests, CI pipeline, mock + live provider coverage | ✅ Complete |
 | **Market-logic validation** | Backtesting engine with P&L simulation, IV term structure visualization, per-factor explainability | ✅ Complete |
 | **Forward paper-trading** | Live scan journaling with actual entry/exit tracking over 4–8 weeks | 🔜 Planned |
 | **Scoring model validation** | Statistical analysis of score vs outcome correlation, false positive rate measurement | 🔜 Planned |
@@ -498,7 +498,7 @@ The backtesting engine (`/api/v1/backtests`) replays historical scan recommendat
 GitHub Actions pipeline runs on every push to `main`:
 - Lint (ruff)
 - Type check (mypy)
-- Full test suite (181 tests)
+- Full test suite (189 tests)
 - Docker build validation
 
 ---
@@ -508,7 +508,7 @@ GitHub Actions pipeline runs on every push to `main`:
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Make your changes with tests
-4. Run `pytest -v` — all 181 tests must pass
+4. Run `pytest -v` — all 189 tests must pass
 5. Submit a Pull Request
 
 ---
@@ -520,4 +520,5 @@ MIT License — see [LICENSE](./LICENSE) for details.
 ---
 
 > **Built with precision for systematic options traders.**
+
 

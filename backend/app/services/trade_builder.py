@@ -101,7 +101,7 @@ class TradeConstructionEngine:
 
     def _determine_phase(self, ticker: str, days_to: int) -> tuple[str, str, str]:
         if ticker.upper() == "XSP":
-            return "IRON_BUTTERFLY_ATM", "L4", "IBKR_PERSONAL"
+            return "XSP_IRON_BUTTERFLY", "L4", "IBKR_PERSONAL"
         elif days_to >= 7:
             return "DOUBLE_CALENDAR", "L1", "SHENIDO"
         elif 0 <= days_to <= 2:

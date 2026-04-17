@@ -87,6 +87,7 @@ class StrategyFactory:
     def get_strategy(self, strategy_id: str) -> BaseOptionsStrategy:
         from app.services.strategies.butterfly import ButterflyStrategy
         from app.services.strategies.double_calendar import DoubleCalendarStrategy
+        from app.services.strategies.xsp_butterfly import XSPButterflyStrategy
 
         strategies = {
             "DOUBLE_CALENDAR": DoubleCalendarStrategy(self._settings, self._registry),
@@ -95,6 +96,9 @@ class StrategyFactory:
             ),
             "IRON_BUTTERFLY_BULLISH": ButterflyStrategy(
                 self._settings, self._registry, offset=0.05, strategy_id="IRON_BUTTERFLY_BULLISH"
+            ),
+            "XSP_IRON_BUTTERFLY": XSPButterflyStrategy(
+                self._settings, self._registry, offset=0.0, strategy_id="XSP_IRON_BUTTERFLY"
             ),
         }
         if strategy_id not in strategies:
@@ -106,4 +110,5 @@ class StrategyFactory:
         return [
             self.get_strategy("DOUBLE_CALENDAR"),
             self.get_strategy("IRON_BUTTERFLY_ATM"),
+            self.get_strategy("XSP_IRON_BUTTERFLY"),
         ]

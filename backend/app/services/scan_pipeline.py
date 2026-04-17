@@ -388,7 +388,7 @@ class ScanPipeline:
         account_id = "SHENIDO"  # Default account, this could be customized later
 
         if ticker.upper() == "XSP":
-            target_strategy_id = "IRON_BUTTERFLY_ATM"
+            target_strategy_id = "XSP_IRON_BUTTERFLY"
             layer_id = "L4"
             account_id = "IBKR_PERSONAL"
         elif days_to >= 7:
@@ -447,6 +447,27 @@ class ScanPipeline:
             best_result.classification = RecommendationClass.WATCHLIST
         else:
             best_result.classification = RecommendationClass.NO_TRADE
+
+        # Assignment-risk safeguard: equity butterflies (L2/L3) carry early-exercise
+        # risk on the short ATM body (American-style options). Cap them at
+        # WATCHLIST so they never surface as RECOMMEND. XSP butterflies are
+        # unaffected (European-style, cash-settled). Controlled by
+        # settings.scoring.CAP_EQUITY_BUTTERFLIES.
+        if (
+            getattr(self._settings.scoring, "CAP_EQUITY_BUTTERFLIES", True)
+            and best_strategy in ("IRON_BUTTERFLY_ATM", "IRON_BUTTERFLY_BULLISH")
+            and not is_index
+            and best_result.classification == RecommendationClass.RECOMMEND
+        ):
+            best_result.classification = RecommendationClass.WATCHLIST
+            cap_note = (
+                " [Capped to WATCHLIST: equity butterfly has early-assignment risk "
+                "on short ATM body. Prefer XSP for RECOMMEND-tier butterflies.]"
+            )
+            if best_result.rationale_summary:
+                best_result.rationale_summary += cap_note
+            else:
+                best_result.rationale_summary = cap_note.strip()
 
         logger.info(
             "ticker_scanned",

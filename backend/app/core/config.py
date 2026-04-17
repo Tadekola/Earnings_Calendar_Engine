@@ -91,6 +91,12 @@ class ScoringSettings(BaseSettings):
 
     SCORING_VERSION: str = "1.1.0"
 
+    # Assignment-risk safeguard: equity butterflies (L2/L3) carry early-exercise
+    # risk on the short ATM body. When True, cap equity butterfly classifications
+    # at WATCHLIST so they never surface as RECOMMEND. XSP butterflies (European,
+    # cash-settled) are not affected. Set False only if you accept assignment risk.
+    CAP_EQUITY_BUTTERFLIES: bool = True
+
 
 class LiquiditySettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LIQ_", env_file=str(ENV_FILE), extra="ignore")
@@ -107,7 +113,10 @@ class LiquiditySettings(BaseSettings):
     # Relaxed thresholds for index products (XSP, etc.)
     INDEX_MIN_AVG_OPTION_VOLUME: int = 10
     INDEX_MIN_OPEN_INTEREST: int = 20
-    INDEX_MAX_BID_ASK_PCT: float = 0.45
+    # XSP options quote with wider spreads than liquid equities, especially
+    # pre-market and post-market (when the scheduler runs). 0.65 accommodates
+    # normal XSP spread behavior without letting through genuinely broken markets.
+    INDEX_MAX_BID_ASK_PCT: float = 0.65
     INDEX_TICKERS: list[str] = ["XSP"]
 
 
