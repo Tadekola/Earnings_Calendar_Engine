@@ -50,6 +50,10 @@ class ButterflyStrategy(BaseOptionsStrategy):
         # For Butterfly, both short_exp and long_exp are the SAME (Front-month)
         return self._liquidity.evaluate_full(price, chain, short_exp, short_exp)
 
+    def _is_index_product(self, ticker: str) -> bool:
+        index_tickers = getattr(self._settings.liquidity, "INDEX_TICKERS", ["XSP"])
+        return ticker.upper() in {t.upper() for t in index_tickers}
+
     def calculate_score(
         self,
         ticker: str,
@@ -62,6 +66,21 @@ class ButterflyStrategy(BaseOptionsStrategy):
         # Custom scoring logic for Butterfly
         factors: list[ScoreFactor] = []
         warnings: list[str] = []
+
+        # Assignment risk: butterflies have short ATM body which is the highest
+        # early-exercise risk point on American-style equity options.
+        if not self._is_index_product(ticker):
+            warnings.append(
+                "Early assignment risk: American-style equity options. The short ATM "
+                "body is at highest risk of early exercise, especially near expiration "
+                "or before ex-dividend dates. Consider XSP (European, cash-settled) for "
+                "structurally safer butterflies."
+            )
+            warnings.append(
+                "Ex-dividend gap: scanner does not currently check ex-dividend dates. "
+                "Short ITM calls are frequently exercised the day before ex-dividend. "
+                "Verify no ex-dividend falls between entry and expiration."
+            )
 
         # 1. IV Percentile (35%): Reward IVP > 80%
         # iv_percentile is 0.0–1.0, convert to percentage
@@ -263,6 +282,21 @@ class ButterflyStrategy(BaseOptionsStrategy):
             "Zero residual value if stock breaches wings",
             "High pin risk if stock lands exactly on body strike",
         ]
+
+        # Assignment risk is elevated on American-style equity butterflies
+        # (short ATM body). Index products (XSP) are European-style and cash-settled.
+        if not self._is_index_product(ticker):
+            key_risks.insert(
+                0,
+                "Early assignment risk: short ATM body on American-style equity "
+                "options can be exercised anytime — highest risk near expiration "
+                "and before ex-dividend dates. Prefer XSP for structural safety.",
+            )
+            key_risks.append(
+                "Ex-dividend not checked: verify no ex-dividend date falls between "
+                "entry and expiration (short ITM calls are routinely exercised the "
+                "day before ex-dividend)."
+            )
 
         if earnings and earnings.confidence != "CONFIRMED":
             key_risks.insert(0, f"Earnings date is {earnings.confidence} — high change risk")

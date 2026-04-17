@@ -213,3 +213,155 @@ def test_butterfly_build_trade_structure(live_settings, mock_registry, mock_chai
     assert trade.estimated_max_loss == 6.0  # Spread width 10.0 - 4.0 credit
     assert trade.profit_zone_low == 96.0  # 100 - 4.0 credit
     assert trade.profit_zone_high == 104.0  # 100 + 4.0 credit
+
+
+# --------------------------------------------------------------------------
+# Assignment-risk warnings: must appear on equity butterflies, absent on XSP
+# --------------------------------------------------------------------------
+
+
+def _xsp_chain(mock_chain):
+    """Clone mock_chain with ticker rewritten to XSP."""
+    new_options = []
+    for o in mock_chain.options:
+        new_options.append(
+            OptionRecord(
+                "XSP",
+                o.option_type,
+                o.strike,
+                o.expiration,
+                o.bid,
+                o.ask,
+                o.mid,
+                o.last,
+                o.volume,
+                o.open_interest,
+                o.implied_volatility,
+                o.delta,
+                o.gamma,
+                o.theta,
+                o.vega,
+                o.rho,
+            )
+        )
+    return OptionsChainSnapshot(
+        ticker="XSP",
+        spot_price=mock_chain.spot_price,
+        options=new_options,
+        snapshot_time=mock_chain.snapshot_time,
+        meta=mock_chain.meta,
+    )
+
+
+def test_butterfly_equity_has_assignment_warning(
+    live_settings, mock_registry, mock_chain, mock_vol
+):
+    bfly = ButterflyStrategy(live_settings, mock_registry)
+    price = PriceRecord("TEST", date.today(), 100.0, 100.0, 100.0, 100.0, 1000)
+    earnings = EarningsRecord("TEST", date(2026, 4, 20), "CONFIRMED")
+    liq = bfly.validate_liquidity(price, mock_chain, date(2026, 4, 24), date(2026, 4, 24))
+
+    score = bfly.calculate_score("TEST", earnings, price, mock_vol, mock_chain, liq)
+    warnings_text = " ".join(score.risk_warnings)
+    assert "Early assignment risk" in warnings_text
+    assert "Ex-dividend" in warnings_text
+
+    trade = bfly.build_trade_structure(
+        ticker="TEST",
+        earnings=earnings,
+        price=price,
+        vol=mock_vol,
+        chain=mock_chain,
+        override_lower=90.0,
+        override_upper=110.0,
+        override_short_exp=date(2026, 4, 24),
+    )
+    risks_text = " ".join(trade.key_risks)
+    assert "Early assignment risk" in risks_text
+    assert "Ex-dividend not checked" in risks_text
+
+
+def test_butterfly_xsp_has_no_assignment_warning(
+    live_settings, mock_registry, mock_chain, mock_vol
+):
+    bfly = ButterflyStrategy(live_settings, mock_registry)
+    price = PriceRecord("XSP", date.today(), 100.0, 100.0, 100.0, 100.0, 1000)
+    earnings = EarningsRecord("XSP", date(2026, 4, 20), "CONFIRMED")
+    xsp_chain = _xsp_chain(mock_chain)
+    liq = bfly.validate_liquidity(price, xsp_chain, date(2026, 4, 24), date(2026, 4, 24))
+
+    score = bfly.calculate_score("XSP", earnings, price, mock_vol, xsp_chain, liq)
+    warnings_text = " ".join(score.risk_warnings)
+    assert "Early assignment risk" not in warnings_text
+    assert "Ex-dividend" not in warnings_text
+
+    trade = bfly.build_trade_structure(
+        ticker="XSP",
+        earnings=earnings,
+        price=price,
+        vol=mock_vol,
+        chain=xsp_chain,
+        override_lower=90.0,
+        override_upper=110.0,
+        override_short_exp=date(2026, 4, 24),
+    )
+    risks_text = " ".join(trade.key_risks)
+    assert "Early assignment risk" not in risks_text
+    assert "Ex-dividend not checked" not in risks_text
+
+
+def test_double_calendar_equity_has_assignment_warning(
+    live_settings, mock_registry, mock_chain, mock_vol
+):
+    dc = DoubleCalendarStrategy(live_settings, mock_registry)
+    price = PriceRecord("TEST", date.today(), 100.0, 100.0, 100.0, 100.0, 1000)
+    earnings = EarningsRecord("TEST", date(2026, 4, 28), "CONFIRMED")
+
+    # Need a chain with both short and long expirations
+    from app.providers.base import ProviderMeta
+
+    long_exp = date(2026, 5, 15)
+    long_legs = []
+    for o in mock_chain.options:
+        long_legs.append(
+            OptionRecord(
+                "TEST",
+                o.option_type,
+                o.strike,
+                long_exp,
+                o.bid + 0.5,
+                o.ask + 0.5,
+                o.mid + 0.5,
+                o.last,
+                o.volume,
+                o.open_interest,
+                o.implied_volatility,
+                o.delta,
+                o.gamma,
+                o.theta,
+                o.vega,
+                o.rho,
+            )
+        )
+    chain = OptionsChainSnapshot(
+        ticker="TEST",
+        spot_price=100.0,
+        options=list(mock_chain.options) + long_legs,
+        snapshot_time=date.today(),
+        meta=ProviderMeta("unknown"),
+    )
+
+    trade = dc.build_trade_structure(
+        ticker="TEST",
+        earnings=earnings,
+        price=price,
+        vol=mock_vol,
+        chain=chain,
+        override_lower=90.0,
+        override_upper=110.0,
+        override_short_exp=date(2026, 4, 24),
+        override_long_exp=long_exp,
+    )
+    risks_text = " ".join(trade.key_risks)
+    assert "American-style equity options" in risks_text
+    assert "Ex-dividend not checked" in risks_text

@@ -41,6 +41,10 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
     ) -> LiquidityCheckResult:
         return self._liquidity.evaluate_full(price, chain, short_exp, long_exp)
 
+    def _is_index_product(self, ticker: str) -> bool:
+        index_tickers = getattr(self._settings.liquidity, "INDEX_TICKERS", ["XSP"])
+        return ticker.upper() in {t.upper() for t in index_tickers}
+
     def calculate_score(
         self,
         ticker: str,
@@ -186,6 +190,24 @@ class DoubleCalendarStrategy(BaseOptionsStrategy):
             "IV expansion may not materialize as expected",
             "Bid-ask spreads may widen at execution",
         ]
+
+        # Assignment risk on short front-month legs (American-style equity only).
+        # Lower severity than butterflies because calendar shorts are typically OTM
+        # and the plan is to exit before earnings. Still flag if ex-dividend could
+        # land between entry and short expiry.
+        if not self._is_index_product(ticker):
+            key_risks.append(
+                "Short front-month legs are American-style equity options. Early "
+                "assignment is possible if legs become ITM (especially around "
+                "ex-dividend dates). Exit plan assumes closing before earnings — "
+                "do not hold shorts through the event."
+            )
+            key_risks.append(
+                "Ex-dividend not checked: verify no ex-dividend date falls between "
+                "entry and short expiry (short ITM calls are routinely exercised "
+                "the day before ex-dividend)."
+            )
+
         if earnings and earnings.confidence != "CONFIRMED":
             key_risks.insert(0, f"Earnings date is {earnings.confidence} — high change risk")
         if total_debit > spot * 0.03:
