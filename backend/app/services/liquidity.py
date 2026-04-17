@@ -102,13 +102,17 @@ class LiquidityEngine:
             sum(o.volume or 0 for o in all_relevant) / len(all_relevant) if all_relevant else 0
         )
         details["avg_option_volume"] = avg_vol
-        if avg_vol < min_opt_vol:
+        if min_opt_vol > 0 and avg_vol < min_opt_vol:
             reasons.append(
                 f"Avg option volume {avg_vol:.0f}"
                 f" below minimum {min_opt_vol}"
             )
             codes.append(RejectionReason.POOR_OPTIONS_LIQUIDITY)
-        sub_scores.append(min(avg_vol / min_opt_vol, 2.0) / 2.0)
+        if min_opt_vol > 0:
+            sub_scores.append(min(avg_vol / min_opt_vol, 2.0) / 2.0)
+        else:
+            # Volume check disabled (index products); contribute neutral sub-score
+            sub_scores.append(1.0)
 
         # 2. Open interest
         avg_oi = (

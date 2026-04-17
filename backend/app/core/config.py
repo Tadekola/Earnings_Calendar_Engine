@@ -111,7 +111,11 @@ class LiquiditySettings(BaseSettings):
     STRICT_SHORT_DATED_MULTIPLIER: float = 1.5
 
     # Relaxed thresholds for index products (XSP, etc.)
-    INDEX_MIN_AVG_OPTION_VOLUME: int = 10
+    # Index options (XSP) are market-maker-driven via CBOE — daily contract
+    # volume is a poor liquidity proxy (especially off-hours). Open interest
+    # is the correct signal: established strikes = quotable. Set volume min
+    # to 0 so off-hours scans aren't falsely rejected.
+    INDEX_MIN_AVG_OPTION_VOLUME: int = 0
     INDEX_MIN_OPEN_INTEREST: int = 20
     # XSP options quote with wider spreads than liquid equities, especially
     # pre-market and post-market (when the scheduler runs). 0.65 accommodates

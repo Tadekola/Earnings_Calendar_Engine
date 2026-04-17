@@ -606,6 +606,13 @@ class ScanPipeline:
         if not isinstance(options_provider, TradierOptionsProvider):
             return None
 
+        def _f(v, default: float = 0.0) -> float:
+            """Coerce None-or-missing Tradier numeric field to float safely."""
+            try:
+                return float(v) if v is not None else default
+            except (TypeError, ValueError):
+                return default
+
         try:
             data = await options_provider._request(
                 "/markets/quotes", {"symbols": ticker.upper()}
@@ -613,21 +620,29 @@ class ScanPipeline:
             quotes = (data.get("quotes") or {}).get("quote", {})
             if isinstance(quotes, list):
                 quotes = quotes[0] if quotes else {}
-            last = float(quotes.get("last", 0))
+            # Overnight/pre-market, Tradier returns null for `last` on index
+            # products (XSP). Fall back to prevclose/close so scans still score.
+            last = (
+                _f(quotes.get("last"))
+                or _f(quotes.get("close"))
+                or _f(quotes.get("prevclose"))
+            )
             if last <= 0:
                 return None
 
             return PriceRecord(
                 ticker=ticker.upper(),
                 trade_date=date.today(),
-                open=float(quotes.get("open", last)),
-                high=float(quotes.get("high", last)),
-                low=float(quotes.get("low", last)),
+                open=_f(quotes.get("open"), last),
+                high=_f(quotes.get("high"), last),
+                low=_f(quotes.get("low"), last),
                 close=last,
-                volume=int(quotes.get("volume", 0)),
-                avg_dollar_volume=float(quotes.get("average_volume", 0)) * last
-                if quotes.get("average_volume")
-                else None,
+                volume=int(_f(quotes.get("volume"))),
+                avg_dollar_volume=(
+                    _f(quotes.get("average_volume")) * last
+                    if quotes.get("average_volume")
+                    else None
+                ),
                 meta=ProviderMeta(
                     source_name="tradier_quote_fallback",
                     freshness_timestamp=datetime.now(UTC),

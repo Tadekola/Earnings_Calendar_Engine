@@ -189,16 +189,30 @@ class XSPButterflyStrategy(ButterflyStrategy):
             )
         )
 
-        # Factor 6: DTE Fit (15%) — 7-14 sweet spot
+        # Factor 6: DTE Fit (15%) — prefer 7-14 sweet spot when scoring
+        # XSP has daily expiries; picking "nearest" would always select 1-3 DTE
+        # and score poorly on gamma risk. Instead, mirror the expiry we would
+        # actually trade (_select_short_expiry logic) so the score reflects
+        # the real opportunity.
         today = date.today()
-        expirations = sorted(chain.expirations)
-        front_exp = next((e for e in expirations if e > today), None)
+        future = sorted(e for e in chain.expirations if e > today)
+
+        sweet_spot = [e for e in future if 7 <= (e - today).days <= 14]
+        acceptable = [e for e in future if 5 <= (e - today).days <= 21]
+        in_window = [e for e in future if 3 <= (e - today).days <= 30]
+        front_exp = (
+            sweet_spot[0] if sweet_spot
+            else acceptable[0] if acceptable
+            else in_window[0] if in_window
+            else None
+        )
         dte = (front_exp - today).days if front_exp else 0
 
-        if front_exp is None or not (3 <= dte <= 30):
+        if front_exp is None:
             return self._hard_reject(
                 ticker,
-                f"No valid expiry in 3-30 DTE window (nearest: {dte}d)",
+                f"No valid expiry in 3-30 DTE window "
+                f"(nearest future: {(future[0] - today).days if future else 0}d)",
             )
 
         if 7 <= dte <= 14:

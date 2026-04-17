@@ -27,12 +27,31 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
         self._options = options_provider
         self._source = "computed_volatility"
 
+    # Index tickers with no direct historical price feed — fall back to a
+    # proxy ticker whose price level closely tracks the index product.
+    # XSP = SPX/10 ≈ SPY (both ~$500), so realized vol % and ATR $ are
+    # directly comparable without scaling.
+    _HISTORY_PROXY: dict[str, str] = {"XSP": "SPY"}
+
     async def get_volatility_metrics(self, ticker: str) -> VolatilitySnapshot:
         today = date.today()
         start = today - timedelta(days=60)
 
         # Fetch price history for realized vol
         history = await self._price.get_price_history(ticker, start, today)
+
+        # Index products (XSP) have no direct historical price at FMP.
+        # Fall back to a proxy (SPY for XSP) — same price regime, same vol.
+        if not history:
+            proxy = self._HISTORY_PROXY.get(ticker.upper())
+            if proxy:
+                logger.info(
+                    "volatility_history_proxy",
+                    ticker=ticker,
+                    proxy=proxy,
+                    reason="no_direct_history",
+                )
+                history = await self._price.get_price_history(proxy, start, today)
 
         rv_10 = self._realized_vol(history, 10)
         rv_20 = self._realized_vol(history, 20)
