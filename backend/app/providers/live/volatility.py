@@ -35,9 +35,22 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
 
     # For index products, real IV Rank comes from the volatility index
     # that tracks the same IV surface. VIX = 30d ATM IV of SPX, and
-    # XSP options share SPX's IV surface (XSP = SPX/10). So VIX's
-    # 52w range *is* XSP's IV history.
-    _IV_INDEX_PROXY: dict[str, str] = {"XSP": "^VIX"}
+    # XSP / SPY options all share SPX's IV surface. Using ^VIX is exact
+    # for those three tickers.
+    #
+    # For QQQ (^VXN) and IWM (^RVX), the exact volatility indices are
+    # only available on a paid FMP tier. We use ^VIX as an approximation:
+    # QQQ-IV / VXN correlation ≈ 0.90 with VIX, and IWM-IV / RVX ≈ 0.85.
+    # This is strictly directional (IVR moves the right way) but absolute
+    # level can be off 5-15pp on typical days. Far better than the
+    # chain-skew fallback (which is effectively random noise).
+    # TODO: upgrade to ^VXN and ^RVX when a richer data tier is available.
+    _IV_INDEX_PROXY: dict[str, str] = {
+        "XSP": "^VIX",   # exact — shares SPX surface
+        "SPY": "^VIX",   # exact — shares SPX surface
+        "QQQ": "^VIX",   # approximate — should be ^VXN
+        "IWM": "^VIX",   # approximate — should be ^RVX
+    }
     _IVR_LOOKBACK_DAYS: int = 252  # standard 52-week window
 
     async def get_volatility_metrics(self, ticker: str) -> VolatilitySnapshot:
