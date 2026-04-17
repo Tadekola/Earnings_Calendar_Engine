@@ -33,6 +33,13 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
     # directly comparable without scaling.
     _HISTORY_PROXY: dict[str, str] = {"XSP": "SPY"}
 
+    # For index products, real IV Rank comes from the volatility index
+    # that tracks the same IV surface. VIX = 30d ATM IV of SPX, and
+    # XSP options share SPX's IV surface (XSP = SPX/10). So VIX's
+    # 52w range *is* XSP's IV history.
+    _IV_INDEX_PROXY: dict[str, str] = {"XSP": "^VIX"}
+    _IVR_LOOKBACK_DAYS: int = 252  # standard 52-week window
+
     async def get_volatility_metrics(self, ticker: str) -> VolatilitySnapshot:
         today = date.today()
         start = today - timedelta(days=60)
@@ -93,23 +100,43 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
                     (back_iv - front_iv) / back_iv, 4
                 )
 
-            # IV rank: percentile of ATM IV within the chain's
-            # full IV distribution (0 = lowest, 1 = highest)
-            all_ivs = sorted([
-                o.implied_volatility
-                for o in chain.options
-                if o.implied_volatility is not None
-                and o.implied_volatility > 0
-            ])
+            # IV Rank: standard definition is
+            #   (current IV − 52w low IV) / (52w high IV − 52w low IV)
+            # For index products (XSP), the correct IV series is the
+            # volatility index (VIX), since XSP options share SPX's IV
+            # surface. For equities without stored IV history, we fall
+            # back to the chain-skew proxy and flag it as approximate.
             atm_iv = front_iv or back_iv
-            if all_ivs and atm_iv:
-                rank_pos = sum(1 for iv in all_ivs if iv <= atm_iv)
-                iv_rank = round(rank_pos / len(all_ivs), 4)
-            if all_ivs and rv_30 and rv_30 > 0:
-                median_iv = float(np.median(all_ivs))
-                iv_pct = round(
-                    min(max((median_iv - rv_30) / rv_30, 0), 1), 4
+            iv_index = self._IV_INDEX_PROXY.get(ticker.upper())
+            if iv_index:
+                iv_rank, iv_pct = await self._iv_rank_from_index(iv_index)
+                logger.debug(
+                    "iv_rank_from_index",
+                    ticker=ticker,
+                    index=iv_index,
+                    iv_rank=iv_rank,
+                    iv_percentile=iv_pct,
                 )
+            else:
+                # Equity fallback: until we have stored historical IV,
+                # approximate IV Rank using the chain's own IV distribution.
+                # NOTE: this under-estimates IVR because ATM IV sits near the
+                # low end of the skew smile. TODO: persist daily ATM IV
+                # snapshots and compute true 252-day IVR from storage.
+                all_ivs = sorted([
+                    o.implied_volatility
+                    for o in chain.options
+                    if o.implied_volatility is not None
+                    and o.implied_volatility > 0
+                ])
+                if all_ivs and atm_iv:
+                    rank_pos = sum(1 for iv in all_ivs if iv <= atm_iv)
+                    iv_rank = round(rank_pos / len(all_ivs), 4)
+                if all_ivs and rv_30 and rv_30 > 0:
+                    median_iv = float(np.median(all_ivs))
+                    iv_pct = round(
+                        min(max((median_iv - rv_30) / rv_30, 0), 1), 4
+                    )
 
         return VolatilitySnapshot(
             ticker=ticker.upper(),
@@ -129,6 +156,48 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
                 confidence_score=0.8 if history else 0.2,
             ),
         )
+
+    async def _iv_rank_from_index(
+        self, index_symbol: str
+    ) -> tuple[float | None, float | None]:
+        """Compute standard 52-week IV Rank and IV Percentile from a volatility
+        index series (e.g., ^VIX). Returns values in 0..1 range.
+
+        IV Rank    = (current - 52w_low) / (52w_high - 52w_low)
+        IV Pctile  = fraction of trading days below current level
+        """
+        today = date.today()
+        start = today - timedelta(days=self._IVR_LOOKBACK_DAYS + 30)
+        try:
+            hist = await self._price.get_price_history(index_symbol, start, today)
+        except Exception as e:
+            logger.warning(
+                "iv_index_history_failed", index=index_symbol, error=str(e)
+            )
+            return None, None
+
+        if not hist or len(hist) < 20:
+            return None, None
+
+        # Use close prices for the volatility index
+        closes = [h.close for h in hist if h.close and h.close > 0]
+        if len(closes) < 20:
+            return None, None
+
+        current = closes[-1]
+        window = closes[-self._IVR_LOOKBACK_DAYS:]
+        lo, hi = min(window), max(window)
+
+        if hi > lo:
+            iv_rank = round((current - lo) / (hi - lo), 4)
+            iv_rank = max(0.0, min(1.0, iv_rank))
+        else:
+            iv_rank = 0.0
+
+        below = sum(1 for c in window if c < current)
+        iv_pct = round(below / len(window), 4)
+
+        return iv_rank, iv_pct
 
     def _realized_vol(self, history: list, window: int) -> float | None:
         if len(history) < window + 1:
