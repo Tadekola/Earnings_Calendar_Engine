@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Moon, Sun } from "lucide-react";
 
 export default function ThemeToggle() {
-  const [dark, setDark] = useState(false);
+  // Default to dark — the inline script in layout.tsx has already applied
+  // the correct class before hydration, so we just read what's there.
+  const [dark, setDark] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem("theme");
-    if (stored === "dark" || (!stored && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
-      setDark(true);
-      document.documentElement.classList.add("dark");
-    }
+    // Sync React state with what the pre-hydration script decided
+    setDark(document.documentElement.classList.contains("dark"));
   }, []);
 
   function toggle() {
@@ -28,10 +28,11 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="flex h-8 w-8 items-center justify-center rounded-md text-lg transition hover:bg-surface-2 dark:hover:bg-gray-700"
+      className="flex h-8 w-8 items-center justify-center rounded-md text-gray-600 transition hover:bg-surface-2 dark:text-gray-300 dark:hover:bg-gray-700"
       title={dark ? "Switch to light mode" : "Switch to dark mode"}
+      aria-label="Toggle theme"
     >
-      {dark ? "☀️" : "🌙"}
+      {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
     </button>
   );
 }

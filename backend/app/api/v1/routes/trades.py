@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+import time
+
+from fastapi import APIRouter, Query, Request
 
 from app.core.errors import raise_bad_request, raise_not_found
 from app.schemas.trade import (
@@ -12,6 +14,15 @@ from app.schemas.trade import (
 from app.services.trade_builder import ConstructedTrade, TradeConstructionEngine
 
 router = APIRouter(prefix="/trades", tags=["trades"])
+
+# Short-lived in-process cache for the recommended-trade build.
+# Building a trade fetches the full Tradier options chain (~15-20 expiration
+# calls, 10-20s wall time). Users often click between WATCHLIST/RECOMMEND
+# tickers rapidly; caching for 60s makes the second click feel instant
+# without sacrificing price freshness (legs are requoted on explicit refresh
+# via the `refresh=true` query param).
+_TRADE_CACHE_TTL_SECONDS = 60
+_trade_cache: dict[tuple[str, str | None], tuple[float, RecommendedTradeResponse]] = {}
 
 
 def _to_response(trade: ConstructedTrade) -> RecommendedTradeResponse:
@@ -65,9 +76,19 @@ def _to_response(trade: ConstructedTrade) -> RecommendedTradeResponse:
 
 @router.get("/{ticker}/recommended", response_model=RecommendedTradeResponse)
 async def get_recommended_trade(
-    request: Request, ticker: str, strategy: str | None = None
+    request: Request,
+    ticker: str,
+    strategy: str | None = None,
+    refresh: bool = Query(False, description="Bypass the 60s cache and rebuild"),
 ) -> RecommendedTradeResponse:
     ticker = ticker.upper()
+    cache_key = (ticker, strategy.upper() if strategy else None)
+
+    if not refresh:
+        hit = _trade_cache.get(cache_key)
+        if hit is not None and (time.monotonic() - hit[0]) < _TRADE_CACHE_TTL_SECONDS:
+            return hit[1]
+
     settings = request.app.state.settings
     registry = request.app.state.provider_registry
 
@@ -86,7 +107,10 @@ async def get_recommended_trade(
         trade = await engine.build_recommended(ticker)
     except ValueError:
         raise_not_found("Trade", ticker)
-    return _to_response(trade)
+
+    response = _to_response(trade)
+    _trade_cache[cache_key] = (time.monotonic(), response)
+    return response
 
 
 @router.post("/build", response_model=RecommendedTradeResponse)
