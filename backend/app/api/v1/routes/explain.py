@@ -82,12 +82,32 @@ async def explain_ticker(
 
     factory = StrategyFactory(settings, registry)
     active_strats = factory.get_active_strategies()
+
+    # XSP is an index product — its only valid strategy is XSP_IRON_BUTTERFLY
+    # regardless of what the frontend toggle sent. Scoring XSP with the
+    # DoubleCalendar or equity butterfly scorers gives garbage (0 stock
+    # volume, wrong factor set, etc).
+    if ticker == "XSP":
+        resolved_strategy = "XSP_IRON_BUTTERFLY"
+    else:
+        # Tolerate the frontend's generic "BUTTERFLY" label by mapping to
+        # the phase-appropriate equity butterfly variant.
+        resolved_strategy = (
+            "IRON_BUTTERFLY_ATM"
+            if strategy and strategy.upper() == "BUTTERFLY"
+            else strategy
+        )
+
     strat = (
         next(
-            (s for s in active_strats if s.strategy_type.upper() == strategy.upper()),
+            (
+                s
+                for s in active_strats
+                if s.strategy_type.upper() == resolved_strategy.upper()
+            ),
             active_strats[0],
         )
-        if strategy
+        if resolved_strategy
         else active_strats[0]
     )
 
