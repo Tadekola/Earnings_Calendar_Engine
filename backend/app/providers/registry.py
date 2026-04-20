@@ -59,12 +59,31 @@ class ProviderRegistry:
             logger.info("provider_init", provider="options", type="mock")
             self._options = MockOptionsProvider()
 
-        # Volatility provider — computed from price + options when live
+        # Volatility provider — TT primary (authoritative IVR/IVP/HV),
+        # ComputedVolatilityProvider as fallback for ATR and short-window RV
         if use_live and (self._settings.fmp.is_configured or self._settings.tradier.is_configured):
             from app.providers.live.volatility import ComputedVolatilityProvider
 
-            logger.info("provider_init", provider="volatility", type="computed_live")
-            self._volatility = ComputedVolatilityProvider(self._price, self._options)
+            computed = ComputedVolatilityProvider(self._price, self._options)
+            if use_live and self._settings.tastytrade.is_configured:
+                from app.providers.live.tastytrade import (
+                    TastyTradeClient,
+                    TastyTradeVolatilityProvider,
+                )
+
+                tt_client = TastyTradeClient(self._settings.tastytrade)
+                logger.info(
+                    "provider_init",
+                    provider="volatility",
+                    type="tastytrade_live",
+                    fallback="computed_live",
+                )
+                self._volatility = TastyTradeVolatilityProvider(
+                    client=tt_client, fallback=computed
+                )
+            else:
+                logger.info("provider_init", provider="volatility", type="computed_live")
+                self._volatility = computed
         else:
             logger.info("provider_init", provider="volatility", type="mock")
             self._volatility = MockVolatilityProvider()
