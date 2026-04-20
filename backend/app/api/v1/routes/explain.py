@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import RecommendationClass
+from app.db.session import get_db
+from app.models.scan import ScanResult
 from app.schemas.explain import (
     ExplainFactorResponse,
     ExplainResponse,
     RejectionResponse,
     RejectionsListResponse,
 )
+from app.services._price_fallback import get_tradier_fallback_price
 from app.services.liquidity import LiquidityEngine
 
 router = APIRouter(tags=["explain"])
@@ -16,15 +21,32 @@ router = APIRouter(tags=["explain"])
 
 @router.get("/explain/{ticker}", response_model=ExplainResponse)
 async def explain_ticker(
-    request: Request, ticker: str, strategy: str | None = None
+    request: Request,
+    ticker: str,
+    strategy: str | None = None,
+    db: AsyncSession = Depends(get_db),
 ) -> ExplainResponse:
     ticker = ticker.upper()
     registry = request.app.state.provider_registry
     settings = request.app.state.settings
 
+    # Prefer the latest persisted scan classification so the header matches
+    # what the scan decided. Falls through to live-compute when no prior
+    # scan exists for this ticker.
+    db_row = (
+        await db.execute(
+            select(ScanResult)
+            .where(ScanResult.ticker == ticker)
+            .order_by(ScanResult.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
     earnings_rec = await registry.earnings.get_earnings_date(ticker)
     vol_snap = await registry.volatility.get_volatility_metrics(ticker)
     price_rec = await registry.price.get_current_price(ticker)
+    if price_rec is None:
+        price_rec = await get_tradier_fallback_price(registry, ticker)
     chain = await registry.options.get_options_chain(ticker)
 
     factors: list[ExplainFactorResponse] = []
@@ -32,18 +54,27 @@ async def explain_ticker(
     data_notes: list[str] = []
     rejection_reasons: list[str] = []
 
-    if not earnings_rec:
+    # XSP (and future index products) has no earnings date by design — it
+    # scores on its own iron-butterfly path. Only treat missing earnings as
+    # disqualifying for real equities.
+    if not earnings_rec and ticker != "XSP":
         rejection_reasons.append("No earnings date found")
+        db_cls = RecommendationClass(db_row.classification) if db_row else RecommendationClass.NO_TRADE
+        db_score = db_row.overall_score if db_row and db_row.overall_score is not None else 0.0
         return ExplainResponse(
             ticker=ticker,
-            classification=RecommendationClass.NO_TRADE,
-            overall_score=0.0,
+            classification=db_cls,
+            overall_score=db_score,
             summary=f"{ticker}: No upcoming earnings — not eligible.",
             factors=[],
             rejection_reasons=rejection_reasons,
             risk_warnings=["Options trading involves significant risk of loss."],
             data_quality_notes=[],
-            recommendation_rationale=f"{ticker} has no upcoming earnings date.",
+            recommendation_rationale=(
+                db_row.rationale_summary
+                if db_row and db_row.rationale_summary
+                else f"{ticker} has no upcoming earnings date."
+            ),
         )
 
     # Run real scoring engine via the requested strategy or default Double Calendar
@@ -122,24 +153,41 @@ async def explain_ticker(
         )
 
     risk_warnings = scoring_result.risk_warnings
-    if earnings_rec.meta.source_name == "mock_earnings":
+    if earnings_rec and earnings_rec.meta.source_name == "mock_earnings":
         data_notes.append("Using mock earnings data — verify with live sources.")
     if vol_snap.meta.source_name == "mock_volatility":
         data_notes.append("Using mock volatility data — verify with live sources.")
 
+    # Prefer the DB's classification/score over a freshly-recomputed one so
+    # the header on the candidate page matches exactly what the scan
+    # decided (avoids micro-variance from intraday price moves).
+    final_cls = (
+        RecommendationClass(db_row.classification) if db_row else scoring_result.classification
+    )
+    final_score = (
+        db_row.overall_score
+        if db_row and db_row.overall_score is not None
+        else scoring_result.overall_score
+    )
+    final_rationale = (
+        db_row.rationale_summary
+        if db_row and db_row.rationale_summary
+        else scoring_result.rationale_summary
+    )
+
     return ExplainResponse(
         ticker=ticker,
-        classification=scoring_result.classification,
-        overall_score=scoring_result.overall_score,
+        classification=final_cls,
+        overall_score=final_score,
         summary=(
             f"{ticker} analysis: {len(factors)} factors evaluated."
-            f" Score: {scoring_result.overall_score}."
+            f" Score: {final_score}."
         ),
         factors=factors,
         rejection_reasons=rejection_reasons,
         risk_warnings=risk_warnings,
         data_quality_notes=data_notes,
-        recommendation_rationale=scoring_result.rationale_summary,
+        recommendation_rationale=final_rationale,
     )
 
 

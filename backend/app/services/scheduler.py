@@ -59,6 +59,18 @@ def start_scheduler(settings: Settings, registry: ProviderRegistry) -> AsyncIOSc
 
     tz = "America/Chicago"
 
+    # Shared options:
+    #   misfire_grace_time=60 — if a backend restart happens >60s after a
+    #     scheduled trigger, the missed job is DROPPED (not re-fired). This
+    #     prevents restart-time "catch-up" scans from reusing stale in-memory
+    #     provider caches and polluting the DB with bogus millisecond scans.
+    #   coalesce=True — if multiple triggers pile up, collapse into one fire.
+    common_opts = {
+        "replace_existing": True,
+        "misfire_grace_time": 60,
+        "coalesce": True,
+    }
+
     # Pre-market: 7:00 AM CT — catch overnight vol changes before open
     _scheduler.add_job(
         scheduled_scan,
@@ -66,8 +78,7 @@ def start_scheduler(settings: Settings, registry: ProviderRegistry) -> AsyncIOSc
         args=[settings, registry],
         id="premarket_scan",
         name="Pre-market Scan",
-        replace_existing=True,
-        misfire_grace_time=3600,
+        **common_opts,
     )
 
     # Morning: 9:30 AM CT — right at market open
@@ -77,8 +88,7 @@ def start_scheduler(settings: Settings, registry: ProviderRegistry) -> AsyncIOSc
         args=[settings, registry],
         id="layered_morning_scan",
         name="V4 Layered Morning Scan",
-        replace_existing=True,
-        misfire_grace_time=3600,
+        **common_opts,
     )
 
     # Midday: 12:30 PM CT — catch intraday vol structure shifts
@@ -88,8 +98,7 @@ def start_scheduler(settings: Settings, registry: ProviderRegistry) -> AsyncIOSc
         args=[settings, registry],
         id="midday_scan",
         name="Midday Scan",
-        replace_existing=True,
-        misfire_grace_time=3600,
+        **common_opts,
     )
 
     # Post-market: 3:30 PM CT (4:30 PM ET) — after market close
@@ -99,8 +108,7 @@ def start_scheduler(settings: Settings, registry: ProviderRegistry) -> AsyncIOSc
         args=[settings, registry],
         id="evening_scan",
         name="Evening Post-market Scan",
-        replace_existing=True,
-        misfire_grace_time=3600,
+        **common_opts,
     )
 
     _scheduler.start()
