@@ -12,6 +12,7 @@ from app.providers.base import (
     OptionRecord,
 )
 from app.providers.registry import ProviderRegistry
+from app.services._price_fallback import get_tradier_fallback_price
 
 logger = get_logger(__name__)
 
@@ -124,6 +125,8 @@ class TradeConstructionEngine:
 
         price = await self._registry.price.get_current_price(ticker)
         if price is None:
+            price = await get_tradier_fallback_price(self._registry, ticker)
+        if price is None:
             raise ValueError(f"No price data for {ticker}")
 
         chain = await self._registry.options.get_options_chain(ticker)
@@ -154,6 +157,8 @@ class TradeConstructionEngine:
             strategy = self._strategy_factory.get_strategy(strategy_id)
 
         price = await self._registry.price.get_current_price(ticker)
+        if price is None:
+            price = await get_tradier_fallback_price(self._registry, ticker)
         if price is None:
             raise ValueError(f"No price data for {ticker}")
 
