@@ -60,7 +60,7 @@ def create_app() -> FastAPI:
             "Pre-earnings Double Calendar Scanner and Builder for liquid U.S. equities. "
             f"{RISK_DISCLAIMER}"
         ),
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
     )
 

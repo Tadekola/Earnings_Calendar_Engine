@@ -44,7 +44,7 @@ export default function Sidebar() {
           </div>
           <div>
             <h1 className="text-sm font-bold tracking-tight text-gray-900 dark:text-gray-100">ECE</h1>
-            <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500">v0.1.0</p>
+            <p className="text-[10px] font-medium text-gray-400 dark:text-gray-500">v0.2.0</p>
           </div>
         </div>
         <ThemeToggle />

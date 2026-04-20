@@ -23,7 +23,7 @@ class HealthResponse(BaseModel):
     environment: str
     operating_mode: str
     timestamp: datetime
-    version: str = "0.1.0"
+    version: str = "0.2.0"
     providers: list[ProviderHealthResponse] = []
     database_connected: bool = False
     message: str | None = None
