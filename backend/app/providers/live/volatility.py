@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 import numpy as np
 
@@ -26,6 +27,9 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
         self._price = price_provider
         self._options = options_provider
         self._source = "computed_volatility"
+        # Keyed by (symbol, as_of_date) → list[PriceRecord]
+        # Prevents fetching the same 280-row ^VIX series dozens of times per scan.
+        self._history_cache: dict[tuple[str, date], list[Any]] = {}
 
     # Index tickers with no direct historical price feed — fall back to a
     # proxy ticker whose price level closely tracks the index product.
@@ -57,8 +61,13 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
         today = date.today()
         start = today - timedelta(days=60)
 
-        # Fetch price history for realized vol
-        history = await self._price.get_price_history(ticker, start, today)
+        # Fetch price history for realized vol (cached per ticker per day)
+        ticker_key = (ticker.upper(), today)
+        if ticker_key in self._history_cache:
+            history = self._history_cache[ticker_key]
+        else:
+            history = await self._price.get_price_history(ticker, start, today)
+            self._history_cache[ticker_key] = history
 
         # Index products (XSP) have no direct historical price at FMP.
         # Fall back to a proxy (SPY for XSP) — same price regime, same vol.
@@ -71,7 +80,12 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
                     proxy=proxy,
                     reason="no_direct_history",
                 )
-                history = await self._price.get_price_history(proxy, start, today)
+                proxy_key = (proxy.upper(), today)
+                if proxy_key in self._history_cache:
+                    history = self._history_cache[proxy_key]
+                else:
+                    history = await self._price.get_price_history(proxy, start, today)
+                    self._history_cache[proxy_key] = history
 
         rv_10 = self._realized_vol(history, 10)
         rv_20 = self._realized_vol(history, 20)
@@ -178,16 +192,26 @@ class ComputedVolatilityProvider(VolatilityMetricsProvider):
 
         IV Rank    = (current - 52w_low) / (52w_high - 52w_low)
         IV Pctile  = fraction of trading days below current level
+
+        History is cached by (symbol, today) so repeated calls within the same
+        scan run hit memory instead of re-fetching ~280 rows from FMP each time.
         """
         today = date.today()
-        start = today - timedelta(days=self._IVR_LOOKBACK_DAYS + 30)
-        try:
-            hist = await self._price.get_price_history(index_symbol, start, today)
-        except Exception as e:
-            logger.warning(
-                "iv_index_history_failed", index=index_symbol, error=str(e)
-            )
-            return None, None
+        cache_key = (index_symbol.upper(), today)
+        if cache_key in self._history_cache:
+            hist = self._history_cache[cache_key]
+            logger.debug("iv_index_history_cache_hit", index=index_symbol)
+        else:
+            start = today - timedelta(days=self._IVR_LOOKBACK_DAYS + 30)
+            try:
+                hist = await self._price.get_price_history(index_symbol, start, today)
+            except Exception as e:
+                logger.warning(
+                    "iv_index_history_failed", index=index_symbol, error=str(e)
+                )
+                return None, None
+            self._history_cache[cache_key] = hist
+            logger.debug("iv_index_history_cache_store", index=index_symbol, rows=len(hist))
 
         if not hist or len(hist) < 20:
             return None, None

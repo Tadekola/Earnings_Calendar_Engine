@@ -65,6 +65,9 @@ class ScanPipeline:
         self._liquidity_engine = LiquidityEngine(settings.liquidity)
         self._scoring_engine = ScoringEngine(settings.scoring, settings.earnings_window)
         self._strategy = StrategyFactory(settings, registry).get_active_strategies()[0]
+        # Populated once during prefilter; reused in _scan_ticker to avoid
+        # double-fetching the same /quote for every passing ticker.
+        self._quote_cache: dict[str, PriceRecord] = {}
 
     async def run(
         self,
@@ -73,6 +76,7 @@ class ScanPipeline:
     ) -> ScanRunResult:
         run_id = str(uuid.uuid4())
         started = datetime.now(UTC)
+        self._quote_cache.clear()
 
         if tickers:
             universe = tickers
@@ -211,16 +215,44 @@ class ScanPipeline:
 
         logger.info("quality_prefilter_start", candidates=len(tickers))
 
+        # Bulk-fetch all quotes in one pass (batches of 10) instead of 1 call
+        # per ticker. Results are stored in self._quote_cache so _scan_ticker
+        # can reuse them without a second round of /quote calls.
+        if has_fmp:
+            bulk = await price_provider.get_bulk_quotes(tickers)
+            for sym, raw in bulk.items():
+                try:
+                    from datetime import UTC as _UTC
+                    from datetime import datetime as _dt
+                    from app.providers.base import ProviderMeta, PriceRecord
+                    close = float(raw.get("price", raw.get("previousClose", 0)))
+                    self._quote_cache[sym] = PriceRecord(
+                        ticker=sym,
+                        trade_date=date.today(),
+                        open=float(raw.get("open", close)),
+                        high=float(raw.get("dayHigh", close)),
+                        low=float(raw.get("dayLow", close)),
+                        close=close,
+                        volume=int(raw.get("volume", 0)),
+                        avg_dollar_volume=float(raw.get("avgVolume", 0)) * close
+                        if raw.get("avgVolume") else None,
+                        meta=ProviderMeta(
+                            source_name="fmp_price",
+                            freshness_timestamp=_dt.now(_UTC),
+                            confidence_score=0.9,
+                        ),
+                    )
+                except Exception:
+                    pass
+            logger.info("prefilter_bulk_quotes_fetched", count=len(self._quote_cache))
+
         async def _check_ticker(ticker: str) -> str | None:
             t = ticker.upper()
             if has_fmp:
-                try:
-                    quote_data = await price_provider.get_current_price(t)
-                    if quote_data is None:
-                        return None
-                    if quote_data.close < pf.MIN_STOCK_PRICE:
-                        return None
-                except Exception:
+                quote_data = self._quote_cache.get(t)
+                if quote_data is None:
+                    return None
+                if quote_data.close < pf.MIN_STOCK_PRICE:
                     return None
 
             try:
@@ -291,7 +323,11 @@ class ScanPipeline:
         is_index = ticker.upper() in self._settings.liquidity.INDEX_TICKERS
 
         # Stage 3: Price + Stock Liquidity
-        price = await self._registry.price.get_current_price(ticker)
+        # Prefer the cache populated during the prefilter (avoids re-fetching
+        # the same /quote for every ticker that passed the quality gate).
+        price = self._quote_cache.get(ticker.upper())
+        if price is None:
+            price = await self._registry.price.get_current_price(ticker)
         if price is None:
             # Fallback: try Tradier quote (covers index products like XSP)
             price = await self._get_tradier_fallback_price(ticker)
