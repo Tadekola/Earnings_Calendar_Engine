@@ -17,6 +17,13 @@ _scheduler: AsyncIOScheduler | None = None
 
 async def scheduled_scan(settings: Settings, registry: ProviderRegistry) -> None:
     """Run a scan and persist results. Called by APScheduler."""
+    if not registry.is_fmp_available():
+        logger.warning(
+            "scheduled_scan_skipped",
+            reason="FMP providers unhealthy (bandwidth limit or outage); "
+            "scan suppressed to avoid polluting DB with empty results.",
+        )
+        return
     logger.info("scheduled_scan_starting")
     try:
         pipeline = ScanPipeline(settings, registry)

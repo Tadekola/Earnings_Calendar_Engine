@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.core.config import Settings
 from app.core.errors import ConfigurationError
 from app.core.logging import get_logger
@@ -17,6 +19,8 @@ from app.providers.mock.volatility import MockVolatilityProvider
 
 logger = get_logger(__name__)
 
+_HEALTH_CACHE_TTL_SECONDS = 300  # re-probe providers at most once every 5 minutes
+
 
 class ProviderRegistry:
     def __init__(self, settings: Settings) -> None:
@@ -25,6 +29,8 @@ class ProviderRegistry:
         self._price: PriceProvider | None = None
         self._options: OptionsChainProvider | None = None
         self._volatility: VolatilityMetricsProvider | None = None
+        self._health_cache: dict[str, ProviderMeta] | None = None
+        self._health_cache_ts: datetime | None = None
 
     def initialize(self) -> None:
         use_live = self._settings.data.STRICT_LIVE_DATA and not self._settings.data.ALLOW_SIMULATION
@@ -112,7 +118,23 @@ class ProviderRegistry:
             raise ConfigurationError("Volatility provider not initialized")
         return self._volatility
 
-    async def health_check_all(self) -> dict[str, ProviderMeta]:
+    async def health_check_all(self, force: bool = False) -> dict[str, ProviderMeta]:
+        """Run provider health probes, caching results for 5 minutes.
+
+        The UI polls /health every ~30 seconds. Without caching this makes
+        a live FMP API call on every poll, burning bandwidth (and hammering
+        the endpoint when FMP returns 429s). The cache means we probe at
+        most once per 5-minute window; force=True bypasses the cache.
+        """
+        now = datetime.now(UTC)
+        if (
+            not force
+            and self._health_cache is not None
+            and self._health_cache_ts is not None
+            and (now - self._health_cache_ts).total_seconds() < _HEALTH_CACHE_TTL_SECONDS
+        ):
+            return self._health_cache
+
         results: dict[str, ProviderMeta] = {}
         for name, provider in [
             ("earnings", self._earnings),
@@ -135,4 +157,21 @@ class ProviderRegistry:
                     confidence_score=0.0,
                     error_details="Not configured",
                 )
+
+        self._health_cache = results
+        self._health_cache_ts = now
         return results
+
+    def is_fmp_available(self) -> bool:
+        """Returns False if the last cached health check shows FMP is down.
+        Used by the scheduler to skip scans while FMP is suspended (429).
+        """
+        if self._health_cache is None:
+            return True  # not yet checked, assume available
+        earnings_ok = self._health_cache.get("earnings")
+        price_ok = self._health_cache.get("price")
+        fmp_down = (
+            (earnings_ok is not None and earnings_ok.error_details is not None)
+            and (price_ok is not None and price_ok.error_details is not None)
+        )
+        return not fmp_down
