@@ -47,6 +47,10 @@ class ScanRunResponse(BaseModel):
     started_at: datetime
     completed_at: datetime | None = None
     results: list[ScanResultResponse] = []
+    universe_source: str | None = None
+    universe_total: int | None = None
+    earnings_candidates: int | None = None
+    quality_candidates: int | None = None
 
 
 class ScanSummaryResponse(BaseModel):

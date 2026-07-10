@@ -1,4 +1,5 @@
 const API_BASE = '';
+const API_KEY = process.env.NEXT_PUBLIC_ECE_API_KEY || '';
 
 export interface ProviderHealth {
   provider: string;
@@ -26,9 +27,17 @@ export interface EarningsEvent {
   confidence: string;
   source: string;
   source_confidence: number;
+  is_live_source: boolean;
   fiscal_quarter: string | null;
   fiscal_year: number | null;
+  eps_estimate: number | null;
+  eps_actual: number | null;
+  revenue_estimate: number | null;
+  revenue_actual: number | null;
+  estimate_last_updated: string | null;
   days_until_earnings: number;
+  last_updated: string | null;
+  data_quality_notes: string[];
 }
 
 export interface UpcomingEarningsResponse {
@@ -73,6 +82,10 @@ export interface ScanRunResponse {
   started_at: string;
   completed_at: string | null;
   results: ScanResult[];
+  universe_source?: string | null;
+  universe_total?: number | null;
+  earnings_candidates?: number | null;
+  quality_candidates?: number | null;
 }
 
 export interface TradeLeg {
@@ -294,9 +307,13 @@ export interface BacktestAnalytics {
 }
 
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers);
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (API_KEY) headers.set('X-API-Key', API_KEY);
+
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));

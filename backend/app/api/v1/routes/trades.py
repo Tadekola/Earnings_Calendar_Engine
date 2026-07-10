@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import time
+from datetime import date
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.errors import raise_bad_request, raise_not_found
+from app.core.security import require_api_key
 from app.schemas.trade import (
     RecommendedTradeResponse,
     TradeBuildRequest,
@@ -22,7 +24,7 @@ router = APIRouter(prefix="/trades", tags=["trades"])
 # without sacrificing price freshness (legs are requoted on explicit refresh
 # via the `refresh=true` query param).
 _TRADE_CACHE_TTL_SECONDS = 60
-_trade_cache: dict[tuple[str, str | None], tuple[float, RecommendedTradeResponse]] = {}
+_trade_cache: dict[tuple[str, str | None, str], tuple[float, RecommendedTradeResponse]] = {}
 
 
 def _to_response(trade: ConstructedTrade) -> RecommendedTradeResponse:
@@ -70,6 +72,8 @@ def _to_response(trade: ConstructedTrade) -> RecommendedTradeResponse:
         key_risks=trade.key_risks,
         risk_disclaimer=trade.risk_disclaimer,
         strategy_type=trade.strategy_type,
+        layer_id=trade.layer_id,
+        account_id=trade.account_id,
         legs=legs,
     )
 
@@ -80,9 +84,10 @@ async def get_recommended_trade(
     ticker: str,
     strategy: str | None = None,
     refresh: bool = Query(False, description="Bypass the 60s cache and rebuild"),
+    _: None = Depends(require_api_key),
 ) -> RecommendedTradeResponse:
     ticker = ticker.upper()
-    cache_key = (ticker, strategy.upper() if strategy else None)
+    cache_key = (ticker, strategy.upper() if strategy else None, date.today().isoformat())
 
     if not refresh:
         hit = _trade_cache.get(cache_key)
@@ -114,7 +119,11 @@ async def get_recommended_trade(
 
 
 @router.post("/build", response_model=RecommendedTradeResponse)
-async def build_trade(request: Request, body: TradeBuildRequest) -> RecommendedTradeResponse:
+async def build_trade(
+    request: Request,
+    body: TradeBuildRequest,
+    _: None = Depends(require_api_key),
+) -> RecommendedTradeResponse:
     settings = request.app.state.settings
     registry = request.app.state.provider_registry
 
@@ -143,7 +152,11 @@ async def build_trade(request: Request, body: TradeBuildRequest) -> RecommendedT
 
 
 @router.post("/reprice", response_model=RecommendedTradeResponse)
-async def reprice_trade(request: Request, req: TradeRepriceRequest) -> RecommendedTradeResponse:
+async def reprice_trade(
+    request: Request,
+    req: TradeRepriceRequest,
+    _: None = Depends(require_api_key),
+) -> RecommendedTradeResponse:
     settings = request.app.state.settings
     registry = request.app.state.provider_registry
 

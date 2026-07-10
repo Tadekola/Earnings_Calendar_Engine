@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { api, ScanRunResponse, ScanResult } from "@/lib/api";
+import { useScanProgress, ScanCompleteEvent, ScanErrorEvent } from "@/lib/useScanProgress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, classificationVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,18 +36,38 @@ export default function ScanResultsPage() {
   const [sortBy, setSortBy] = useState<"score" | "ticker">("score");
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  const progress = useScanProgress(
+    async (e: ScanCompleteEvent) => {
+      setLoading(false);
+      progress.disconnect();
+      toast.success(
+        `Scan complete — ${e.total_recommended} recommended, ${e.total_watchlist} watchlist`
+      );
+      try {
+        const result = await api.getScanRun(e.run_id);
+        setScanRun(result);
+      } catch {}
+    },
+    (e: ScanErrorEvent) => {
+      setLoading(false);
+      progress.disconnect();
+      setError(e.error || "Scan failed");
+      toast.error(e.error || "Scan failed");
+    },
+  );
+
   async function runScan() {
     setLoading(true);
     setError(null);
+    progress.reset();
+    progress.connect();
     try {
-      const result = await api.runScan();
-      setScanRun(result);
-      toast.success(`Scan complete — ${result.total_scanned} scanned, ${result.total_recommended} recommended`);
+      await api.runScanAsync();
     } catch (err: any) {
-      setError(err.message);
-      toast.error(`Scan failed: ${err.message}`);
-    } finally {
       setLoading(false);
+      progress.disconnect();
+      setError(err.message || "Scan failed");
+      toast.error(err.message || "Scan failed");
     }
   }
 
@@ -69,7 +91,7 @@ export default function ScanResultsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Scan Results</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Evaluate the universe for options trade opportunities
+            Screen the configured universe, then deep scan earnings-qualified options setups
           </p>
         </div>
         <Button onClick={runScan} disabled={loading}>
@@ -104,6 +126,31 @@ export default function ScanResultsPage() {
 
       {scanRun && !loading && (
         <>
+          {scanRun.universe_total != null && (
+            <Card>
+              <CardContent className="flex flex-wrap items-center gap-3 p-4 text-sm">
+                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                  Universe funnel
+                </span>
+                <span className="text-gray-500 dark:text-gray-400">
+                  {scanRun.universe_source || "Universe"} screened {scanRun.universe_total}
+                </span>
+                {scanRun.earnings_candidates != null && (
+                  <span className="text-gray-500 dark:text-gray-400">
+                    → {scanRun.earnings_candidates} earnings-window candidates
+                  </span>
+                )}
+                {scanRun.quality_candidates != null && (
+                  <span className="text-gray-500 dark:text-gray-400">
+                    → {scanRun.quality_candidates} quality candidates
+                  </span>
+                )}
+                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                  → {scanRun.total_scanned} deep scanned
+                </span>
+              </CardContent>
+            </Card>
+          )}
           {/* Summary bar */}
           <Card>
             <CardContent className="flex flex-wrap items-center gap-6 p-4">
@@ -112,7 +159,7 @@ export default function ScanResultsPage() {
                 <span className="font-mono text-xs text-gray-900 dark:text-gray-100">{scanRun.run_id.slice(0, 8)}</span>
               </div>
               <div className="text-sm">
-                <span className="text-gray-500 dark:text-gray-400">Scanned:</span>{" "}
+                <span className="text-gray-500 dark:text-gray-400">Deep scanned:</span>{" "}
                 <span className="font-semibold text-gray-900 dark:text-gray-100">{scanRun.total_scanned}</span>
               </div>
               <div className="text-sm">
@@ -189,13 +236,13 @@ export default function ScanResultsPage() {
                     onClick={() => setExpanded(expanded === r.ticker ? null : r.ticker)}
                   >
                     <div className="w-16">
-                      <a
+                      <Link
                         href={`/trades?ticker=${r.ticker}`}
                         className="font-semibold text-brand-700 hover:underline dark:text-brand-400"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {r.ticker}
-                      </a>
+                      </Link>
                     </div>
                     <div className="w-16 font-mono text-sm">
                       {r.overall_score !== null ? (
@@ -302,9 +349,9 @@ export default function ScanResultsPage() {
                       {/* Actions */}
                       <div className="flex gap-2 pt-2">
                         <Button variant="ghost" size="sm" asChild>
-                          <a href={`/trades?ticker=${r.ticker}`}>
+                          <Link href={`/trades?ticker=${r.ticker}`}>
                             View Trade <ArrowRight className="h-3 w-3" />
-                          </a>
+                          </Link>
                         </Button>
                       </div>
                     </div>

@@ -56,6 +56,19 @@ class ScanRunResult:
     started_at: datetime
     completed_at: datetime
     results: list[TickerScanResult] = field(default_factory=list)
+    universe_source: str = ""
+    universe_total: int = 0
+    earnings_candidates: int | None = None
+    quality_candidates: int | None = None
+
+
+@dataclass
+class UniverseSelection:
+    tickers: list[str]
+    source: str
+    source_total: int
+    earnings_candidates: int | None = None
+    quality_candidates: int | None = None
 
 
 class ScanPipeline:
@@ -79,20 +92,41 @@ class ScanPipeline:
         self._quote_cache.clear()
 
         if tickers:
-            universe = tickers
+            selection = UniverseSelection(
+                tickers=[t.upper() for t in tickers],
+                source="CUSTOM",
+                source_total=len(tickers),
+                earnings_candidates=len(tickers),
+                quality_candidates=len(tickers),
+            )
         elif self._settings.data.UNIVERSE_SOURCE == UniverseSource.SP500:
-            universe = await self._build_sp500_universe()
+            selection = await self._build_sp500_universe()
             # Inject non-earnings tickers (like XSP) into SP500 universe
             for t in self._settings.DEFAULT_UNIVERSE:
-                if t == "XSP" and t not in universe:
-                    universe.append(t)
+                if t == "XSP" and t not in selection.tickers:
+                    selection.tickers.append(t)
+                    if selection.quality_candidates is not None:
+                        selection.quality_candidates += 1
         else:
             universe = self._settings.DEFAULT_UNIVERSE
+            selection = UniverseSelection(
+                tickers=universe,
+                source=self._settings.data.UNIVERSE_SOURCE.value,
+                source_total=len(universe),
+                earnings_candidates=len(universe),
+                quality_candidates=len(universe),
+            )
+
+        universe = selection.tickers
 
         logger.info(
             "scan_started",
             run_id=run_id,
             universe_size=len(universe),
+            universe_source=selection.source,
+            universe_total=selection.source_total,
+            earnings_candidates=selection.earnings_candidates,
+            quality_candidates=selection.quality_candidates,
             operating_mode=self._settings.OPERATING_MODE.value,
         )
 
@@ -156,9 +190,13 @@ class ScanPipeline:
             started_at=started,
             completed_at=completed,
             results=results,
+            universe_source=selection.source,
+            universe_total=selection.source_total,
+            earnings_candidates=selection.earnings_candidates,
+            quality_candidates=selection.quality_candidates,
         )
 
-    async def _build_sp500_universe(self) -> list[str]:
+    async def _build_sp500_universe(self) -> UniverseSelection:
         """Fetch S&P 500 constituents from FMP, then pre-filter to only tickers
         with confirmed earnings within the configured earnings window.
         This avoids running expensive options API calls on all ~500 tickers."""
@@ -170,7 +208,14 @@ class ScanPipeline:
                 "sp500_universe_fallback",
                 reason="earnings provider is not FMP, using DEFAULT_UNIVERSE",
             )
-            return self._settings.DEFAULT_UNIVERSE
+            default_universe = self._settings.DEFAULT_UNIVERSE
+            return UniverseSelection(
+                tickers=default_universe,
+                source="DEFAULT_UNIVERSE",
+                source_total=len(default_universe),
+                earnings_candidates=len(default_universe),
+                quality_candidates=len(default_universe),
+            )
 
         logger.info("sp500_universe_fetch_start")
         sp500_tickers = await earnings_provider.get_sp500_tickers()
@@ -179,7 +224,14 @@ class ScanPipeline:
                 "sp500_universe_fallback",
                 reason="FMP returned empty S&P 500 list, using DEFAULT_UNIVERSE",
             )
-            return self._settings.DEFAULT_UNIVERSE
+            default_universe = self._settings.DEFAULT_UNIVERSE
+            return UniverseSelection(
+                tickers=default_universe,
+                source="DEFAULT_UNIVERSE",
+                source_total=len(default_universe),
+                earnings_candidates=len(default_universe),
+                quality_candidates=len(default_universe),
+            )
 
         min_days = self._settings.earnings_window.MIN_DAYS_TO_EARNINGS
         max_days = self._settings.earnings_window.MAX_DAYS_TO_EARNINGS
@@ -192,13 +244,26 @@ class ScanPipeline:
                 "sp500_universe_no_earnings",
                 reason="No S&P 500 tickers have earnings in window, using full list",
             )
-            return sp500_tickers
+            return UniverseSelection(
+                tickers=sp500_tickers,
+                source="SP500",
+                source_total=len(sp500_tickers),
+                earnings_candidates=0,
+                quality_candidates=len(sp500_tickers),
+            )
 
+        earnings_candidate_count = len(prefiltered)
         if self._settings.prefilter.ENABLED:
             prefiltered = await self._apply_quality_prefilter(prefiltered)
 
         logger.info("sp500_universe_ready", total=len(prefiltered))
-        return prefiltered
+        return UniverseSelection(
+            tickers=prefiltered,
+            source="SP500",
+            source_total=len(sp500_tickers),
+            earnings_candidates=earnings_candidate_count,
+            quality_candidates=len(prefiltered),
+        )
 
     async def _apply_quality_prefilter(self, tickers: list[str]) -> list[str]:
         """Drop low-quality tickers before running the full options pipeline.
@@ -219,12 +284,14 @@ class ScanPipeline:
         # per ticker. Results are stored in self._quote_cache so _scan_ticker
         # can reuse them without a second round of /quote calls.
         if has_fmp:
+            assert isinstance(price_provider, FMPPriceProvider)
             bulk = await price_provider.get_bulk_quotes(tickers)
             for sym, raw in bulk.items():
                 try:
                     from datetime import UTC as _UTC
                     from datetime import datetime as _dt
-                    from app.providers.base import ProviderMeta, PriceRecord
+
+                    from app.providers.base import PriceRecord, ProviderMeta
                     close = float(raw.get("price", raw.get("previousClose", 0)))
                     self._quote_cache[sym] = PriceRecord(
                         ticker=sym,

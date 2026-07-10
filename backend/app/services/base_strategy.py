@@ -110,5 +110,6 @@ class StrategyFactory:
         return [
             self.get_strategy("DOUBLE_CALENDAR"),
             self.get_strategy("IRON_BUTTERFLY_ATM"),
+            self.get_strategy("IRON_BUTTERFLY_BULLISH"),
             self.get_strategy("XSP_IRON_BUTTERFLY"),
         ]

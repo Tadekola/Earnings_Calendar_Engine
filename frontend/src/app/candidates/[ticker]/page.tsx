@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { api, ExplainResponse, RecommendedTrade, IVTermStructure } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, classificationVariant } from "@/components/ui/badge";
@@ -123,9 +124,9 @@ export default function CandidateDetailPage() {
             </button>
           </div>
           <Button asChild>
-            <a href={`/trades?ticker=${ticker}`}>
+            <Link href={`/trades?ticker=${ticker}`}>
               View Trade <ArrowRight className="h-4 w-4" />
-            </a>
+            </Link>
           </Button>
         </div>
       </div>

@@ -7,6 +7,7 @@ import {
   api,
   ScanRunResponse,
 } from "@/lib/api";
+import Link from "next/link";
 import { useScanProgress, ScanCompleteEvent, ScanErrorEvent } from "@/lib/useScanProgress";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge, classificationVariant, severityVariant, confidenceVariant } from "@/components/ui/badge";
@@ -28,6 +29,19 @@ import {
   ArrowRight,
   Loader2,
 } from "lucide-react";
+
+function formatEstimate(value: number | null | undefined, prefix = "") {
+  if (value == null) return "N/A";
+  return `${prefix}${value.toFixed(2)}`;
+}
+
+function formatRevenue(value: number | null | undefined) {
+  if (value == null) return "N/A";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  return `$${value.toLocaleString()}`;
+}
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
@@ -176,7 +190,7 @@ export default function Dashboard() {
               ))}
             </div>
             <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-              {progress.events[progress.events.length - 1].index} / {progress.events[progress.events.length - 1].total} tickers processed
+              {progress.events[progress.events.length - 1].index} / {progress.events[progress.events.length - 1].total} deep-scan candidates processed
             </p>
           </CardContent>
         </Card>
@@ -332,7 +346,7 @@ export default function Dashboard() {
             {summary && summary.top_candidates.length > 0 ? (
               <div className="space-y-1.5">
                 {summary.top_candidates.map((c, i) => (
-                  <a
+                  <Link
                     key={c.ticker}
                     href={`/candidates/${c.ticker}`}
                     className="flex items-center justify-between rounded-lg border border-transparent bg-surface-1 px-3 py-2.5 text-sm transition-all hover:border-brand-200 hover:bg-brand-50/50 dark:bg-gray-700/50 dark:hover:border-brand-800 dark:hover:bg-brand-900/20"
@@ -352,7 +366,7 @@ export default function Dashboard() {
                         {c.score.toFixed(1)}
                       </span>
                     </div>
-                  </a>
+                  </Link>
                 ))}
               </div>
             ) : (
@@ -372,9 +386,9 @@ export default function Dashboard() {
                 <Clock className="h-4 w-4 text-gray-500" />
                 <CardTitle>Recent Scans</CardTitle>
               </div>
-              <a href="/scan" className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">
+              <Link href="/scan" className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">
                 View all <ArrowRight className="h-3 w-3" />
-              </a>
+              </Link>
             </div>
           </CardHeader>
           <CardContent>
@@ -394,7 +408,7 @@ export default function Dashboard() {
                       </span>
                     </div>
                     <div className="mt-1.5 flex items-center gap-4 text-xs">
-                      <span className="text-gray-600 dark:text-gray-300">{s.total_scanned} scanned</span>
+                      <span className="text-gray-600 dark:text-gray-300">{s.total_scanned} deep scanned</span>
                       <span className="font-semibold text-emerald-600">{s.total_recommended} rec</span>
                       <span className="text-amber-600">{s.total_watchlist} watch</span>
                       <span className="text-red-500">{s.total_rejected} rej</span>
@@ -434,15 +448,18 @@ export default function Dashboard() {
                     <th className="pb-3 pr-4">Ticker</th>
                     <th className="pb-3 pr-4">Date</th>
                     <th className="pb-3 pr-4">Days</th>
+                    <th className="pb-3 pr-4">EPS Est.</th>
+                    <th className="pb-3 pr-4">Revenue Est.</th>
                     <th className="pb-3 pr-4">Timing</th>
                     <th className="pb-3 pr-4">Confidence</th>
+                    <th className="pb-3 pr-4">Source</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-2 dark:divide-gray-700">
                   {earnings.earnings.map((e) => (
                     <tr key={e.ticker} className="transition-colors hover:bg-surface-1 dark:hover:bg-gray-700/50">
                       <td className="py-3 pr-4">
-                        <a href={`/candidates/${e.ticker}`} className="font-semibold text-brand-700 hover:underline dark:text-brand-400">{e.ticker}</a>
+                        <Link href={`/candidates/${e.ticker}`} className="font-semibold text-brand-700 hover:underline dark:text-brand-400">{e.ticker}</Link>
                       </td>
                       <td className="py-3 pr-4 font-mono text-xs text-gray-600 dark:text-gray-300">{e.earnings_date}</td>
                       <td className="py-3 pr-4">
@@ -452,9 +469,23 @@ export default function Dashboard() {
                           {e.days_until_earnings}d
                         </span>
                       </td>
+                      <td className="py-3 pr-4 font-mono text-xs text-gray-700 dark:text-gray-200">
+                        {formatEstimate(e.eps_estimate, "$")}
+                      </td>
+                      <td className="py-3 pr-4 font-mono text-xs text-gray-700 dark:text-gray-200">
+                        {formatRevenue(e.revenue_estimate)}
+                      </td>
                       <td className="py-3 pr-4 text-xs text-gray-600 dark:text-gray-300">{e.report_timing}</td>
                       <td className="py-3 pr-4">
                         <Badge variant={confidenceVariant(e.confidence)}>{e.confidence}</Badge>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <div className="flex flex-col gap-1">
+                          <Badge variant={e.is_live_source ? "confirmed" : "estimated"}>
+                            {e.is_live_source ? "LIVE" : "SIM"}
+                          </Badge>
+                          <span className="font-mono text-[10px] text-gray-400">{e.source}</span>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -475,7 +506,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div className="rounded-lg bg-surface-1 p-4 text-center dark:bg-gray-700/50">
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{scanResult.total_scanned}</p>
-                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Scanned</p>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Deep Scanned</p>
               </div>
               <div className="rounded-lg bg-emerald-50 p-4 text-center dark:bg-emerald-900/20">
                 <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{scanResult.total_recommended}</p>
@@ -490,9 +521,24 @@ export default function Dashboard() {
                 <p className="mt-0.5 text-xs text-red-600 dark:text-red-400">Rejected</p>
               </div>
             </div>
+            {scanResult.universe_total != null && (
+              <div className="mt-4 rounded-lg border border-surface-3 bg-surface-1 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-700/40 dark:text-gray-300">
+                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                  Universe funnel:
+                </span>{" "}
+                {scanResult.universe_source || "Universe"} screened {scanResult.universe_total} underlyings
+                {scanResult.earnings_candidates != null && (
+                  <> → {scanResult.earnings_candidates} in the earnings window</>
+                )}
+                {scanResult.quality_candidates != null && (
+                  <> → {scanResult.quality_candidates} passed quality prefilter</>
+                )}
+                <> → {scanResult.total_scanned} deep scanned.</>
+              </div>
+            )}
             <div className="mt-6">
               <Button variant="secondary" size="sm" asChild>
-                <a href="/scan">View Full Results <ArrowRight className="h-3 w-3" /></a>
+                <Link href="/scan">View Full Results <ArrowRight className="h-3 w-3" /></Link>
               </Button>
             </div>
           </CardContent>

@@ -4,6 +4,8 @@ from datetime import date, timedelta
 
 import pytest
 
+from app.core.config import FMPSettings
+from app.providers.live.fmp import FMPEarningsProvider
 from app.providers.mock.earnings import MockEarningsProvider
 from app.providers.mock.market_data import MockPriceProvider
 from app.providers.mock.options import MockOptionsProvider
@@ -37,6 +39,32 @@ async def test_mock_earnings_confirmed():
     assert result is not None
     assert result.confidence == "CONFIRMED"
     assert result.ticker == "AAPL"
+    assert result.eps_estimate is not None
+    assert result.revenue_estimate is not None
+    assert result.meta.provenance["mode"] == "simulation"
+
+
+def test_fmp_earnings_preserves_consensus_estimates():
+    provider = FMPEarningsProvider(FMPSettings(FMP_API_KEY="test"))
+    result = provider._parse_earnings(
+        {
+            "symbol": "AAPL",
+            "date": "2026-07-30",
+            "time": "amc",
+            "epsEstimated": 1.73,
+            "epsActual": None,
+            "revenueEstimated": 101230000000,
+            "revenueActual": None,
+            "lastUpdated": "2026-06-05T12:30:00Z",
+        }
+    )
+
+    assert result is not None
+    assert result.ticker == "AAPL"
+    assert result.eps_estimate == 1.73
+    assert result.revenue_estimate == 101230000000
+    assert result.estimate_last_updated is not None
+    assert result.meta.provenance["endpoint"] == "/earnings-calendar"
 
 
 @pytest.mark.asyncio

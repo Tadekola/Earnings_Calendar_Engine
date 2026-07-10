@@ -1,17 +1,18 @@
 """Backtesting engine — simulates trade outcomes from historical scan data."""
 from __future__ import annotations
 
+import hashlib
 import math
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.models.backtest import Backtest, BacktestTrade
-from app.models.scan import ScanResult, ScanRun
+from app.models.scan import ScanResult
 from app.models.trade import RecommendedTrade
 from app.schemas.backtest import (
     BacktestAnalyticsResponse,
@@ -25,7 +26,15 @@ from app.schemas.backtest import (
 
 logger = get_logger(__name__)
 
-UTC = timezone.utc
+
+def _stable_int_hash(key: str, modulus: int = 0) -> int:
+    """Return a deterministic integer derived from an MD5 hash of the key.
+
+    Using hashlib instead of Python's built-in hash() avoids PYTHONHASHSEED
+    randomization so backtests are reproducible across processes and restarts.
+    """
+    value = int(hashlib.md5(key.encode("utf-8")).hexdigest(), 16)
+    return value % modulus if modulus else value
 
 
 class BacktestingEngine:
@@ -106,30 +115,25 @@ class BacktestingEngine:
         rt_query = select(RecommendedTrade).order_by(RecommendedTrade.created_at)
         rt_result = await self._session.execute(rt_query)
         rt_map: dict[tuple[str, str], RecommendedTrade] = {}
-        for rt in rt_result.scalars().all():
-            rt_map[(rt.scan_run_id, rt.ticker)] = rt
-
-        # Get scan runs for date filtering
-        run_ids = {sr.scan_run_id for sr in scan_results}
-        run_map: dict[str, ScanRun] = {}
-        if run_ids:
-            run_query = select(ScanRun).where(ScanRun.run_id.in_(run_ids))
-            run_result = await self._session.execute(run_query)
-            for run in run_result.scalars().all():
-                run_map[run.run_id] = run
+        for rec in rt_result.scalars().all():
+            rt_map[(rec.scan_run_id, rec.ticker)] = rec
 
         # Deduplicate: keep latest scan per ticker (avoid re-scoring same name)
         seen_tickers: dict[str, ScanResult] = {}
         for sr in scan_results:
             if sr.overall_score is not None and sr.overall_score >= bt.min_score:
                 existing = seen_tickers.get(sr.ticker)
-                if existing is None or (sr.created_at and existing.created_at and sr.created_at > existing.created_at):
+                if existing is None or (
+                    sr.created_at
+                    and existing.created_at
+                    and sr.created_at > existing.created_at
+                ):
                     seen_tickers[sr.ticker] = sr
 
         trades: list[BacktestTrade] = []
         for ticker, sr in seen_tickers.items():
             # Try to get richer data from recommended_trades
-            rt = rt_map.get((sr.scan_run_id, sr.ticker))
+            rt: RecommendedTrade | None = rt_map.get((sr.scan_run_id, sr.ticker))
 
             # Parse "Earnings in X days" from rationale
             days_to_earnings = 14  # default
@@ -138,7 +142,6 @@ class BacktestingEngine:
                 if m:
                     days_to_earnings = int(m.group(1))
 
-            scan_run = run_map.get(sr.scan_run_id)
             entry_date = sr.created_at.date() if sr.created_at else date.today()
             earnings_date = entry_date + timedelta(days=days_to_earnings)
 
@@ -190,7 +193,12 @@ class BacktestingEngine:
             "DIS": 110, "CRM": 270, "AMD": 160, "INTC": 32, "XSP": 530,
             "BA": 180, "GS": 440, "MS": 95, "WMT": 60, "COST": 730,
         }
-        return float(known.get(ticker.upper(), 150 + hash(ticker) % 200))
+        return float(
+            known.get(
+                ticker.upper(),
+                150 + _stable_int_hash(ticker.upper(), modulus=200),
+            )
+        )
 
     def _synthesize_structure(
         self, strategy: str, spot: float
@@ -241,7 +249,9 @@ class BacktestingEngine:
             # Calculate P&L based on strategy
             pnl = self._calc_pnl(trade, exit_spot)
             trade.realized_pnl = round(pnl, 2)
-            trade.realized_pnl_pct = round((pnl / trade.entry_debit) * 100, 2) if trade.entry_debit else 0.0
+            trade.realized_pnl_pct = (
+                round((pnl / trade.entry_debit) * 100, 2) if trade.entry_debit else 0.0
+            )
 
             if pnl > 0.5:
                 trade.outcome = "WIN"
@@ -270,7 +280,9 @@ class BacktestingEngine:
         score_factor = trade.entry_score / 100.0 if trade.entry_score else 0.5
 
         # Deterministic hash-based simulation for reproducibility
-        ticker_hash = hash(f"{trade.ticker}:{trade.entry_date}:{trade.backtest_id}")
+        ticker_hash = _stable_int_hash(
+            f"{trade.ticker}:{trade.entry_date}:{trade.backtest_id}"
+        )
         bucket = (ticker_hash % 100) / 100.0
 
         # Higher score = wider effective win zone
@@ -334,11 +346,21 @@ class BacktestingEngine:
         bt.winning_trades = sum(1 for t in trades if t.outcome == "WIN")
         bt.losing_trades = sum(1 for t in trades if t.outcome == "LOSS")
         bt.total_pnl = round(sum(t.realized_pnl or 0 for t in trades), 2)
-        bt.avg_pnl_per_trade = round(bt.total_pnl / bt.total_trades, 2) if bt.total_trades else None
-        bt.win_rate = round(bt.winning_trades / bt.total_trades * 100, 1) if bt.total_trades else None
+        bt.avg_pnl_per_trade = (
+            round(bt.total_pnl / bt.total_trades, 2) if bt.total_trades else None
+        )
+        bt.win_rate = (
+            round(bt.winning_trades / bt.total_trades * 100, 1)
+            if bt.total_trades
+            else None
+        )
 
         hold_days_list = [t.hold_days for t in trades if t.hold_days]
-        bt.avg_hold_days = round(sum(hold_days_list) / len(hold_days_list), 1) if hold_days_list else None
+        bt.avg_hold_days = (
+            round(sum(hold_days_list) / len(hold_days_list), 1)
+            if hold_days_list
+            else None
+        )
 
         # Max drawdown
         cumulative = 0.0
@@ -424,10 +446,10 @@ class BacktestingEngine:
         by_layer: dict[str, dict] = defaultdict(lambda: {"trades": 0, "wins": 0, "pnl": 0.0})
         for t in detail.trades:
             layer = t.layer_id or "UNKNOWN"
-            l = by_layer[layer]
-            l["trades"] += 1
-            l["wins"] += 1 if t.outcome == "WIN" else 0
-            l["pnl"] += t.realized_pnl or 0
+            layer_data = by_layer[layer]
+            layer_data["trades"] += 1
+            layer_data["wins"] += 1 if t.outcome == "WIN" else 0
+            layer_data["pnl"] += t.realized_pnl or 0
         for v in by_layer.values():
             v["win_rate"] = round(v["wins"] / v["trades"] * 100, 1) if v["trades"] else 0
             v["pnl"] = round(v["pnl"], 2)

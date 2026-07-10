@@ -251,6 +251,10 @@ class ScoringEngine:
         # Use realized vol to estimate expected pre-earnings range
         rv = vol.realized_vol_20d or vol.realized_vol_10d
         if rv is not None and price.close > 0:
+            if days_to <= 0:
+                score = 30.0
+                rationale_parts.append("Earnings date is not in the future")
+                days_to = 1
             daily_move_pct = rv / (252**0.5)
             expected_range_pct = daily_move_pct * (days_to**0.5)
 

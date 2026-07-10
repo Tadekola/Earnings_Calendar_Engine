@@ -20,6 +20,11 @@ class EarningsEvent(Base):
     source_confidence: Mapped[float] = mapped_column(Float, default=0.5)
     fiscal_quarter: Mapped[str | None] = mapped_column(String(10))
     fiscal_year: Mapped[int | None] = mapped_column(Integer)
+    eps_estimate: Mapped[float | None] = mapped_column(Float)
+    eps_actual: Mapped[float | None] = mapped_column(Float)
+    revenue_estimate: Mapped[float | None] = mapped_column(Float)
+    revenue_actual: Mapped[float | None] = mapped_column(Float)
+    estimate_last_updated: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_updated: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

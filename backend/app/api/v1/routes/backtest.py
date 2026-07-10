@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import require_api_key
 from app.db.session import get_db
 from app.schemas.backtest import (
     BacktestAnalyticsResponse,
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/backtests", tags=["backtests"])
 @router.post("", response_model=BacktestDetailResponse)
 async def create_backtest(
     req: BacktestCreateRequest,
+    _: None = Depends(require_api_key),
     db: AsyncSession = Depends(get_db),
 ) -> BacktestDetailResponse:
     """Run a new backtest against historical trade recommendations."""
@@ -57,6 +59,7 @@ async def get_backtest_analytics(
 @router.delete("/{backtest_id}", status_code=204, response_model=None)
 async def delete_backtest(
     backtest_id: str,
+    _: None = Depends(require_api_key),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete a backtest and all its trade results."""

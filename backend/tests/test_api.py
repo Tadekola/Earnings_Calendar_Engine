@@ -11,6 +11,12 @@ async def test_upcoming_earnings(client):
     assert "total" in data
     assert "earnings" in data
     assert isinstance(data["earnings"], list)
+    if data["earnings"]:
+        event = data["earnings"][0]
+        assert "eps_estimate" in event
+        assert "revenue_estimate" in event
+        assert "is_live_source" in event
+        assert "data_quality_notes" in event
 
 
 @pytest.mark.asyncio

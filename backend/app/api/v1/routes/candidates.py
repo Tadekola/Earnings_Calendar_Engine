@@ -31,8 +31,11 @@ class IVTermStructureResponse(BaseModel):
 
 
 @router.get("/{ticker}/iv-term-structure", response_model=IVTermStructureResponse)
-async def get_iv_term_structure(request: Request, ticker: str) -> IVTermStructureResponse:
-    """Return ATM implied volatility for each available expiration — powers the IV term structure chart."""
+async def get_iv_term_structure(
+    request: Request,
+    ticker: str,
+) -> IVTermStructureResponse:
+    """Return ATM IV per expiration — powers the IV term structure chart."""
     ticker = ticker.upper()
     registry = request.app.state.provider_registry
     chain = await registry.options.get_options_chain(ticker)
@@ -91,11 +94,7 @@ async def get_candidate(
     scanned.
     """
     ticker = ticker.upper()
-    settings = request.app.state.settings
     registry = request.app.state.provider_registry
-
-    if ticker not in settings.DEFAULT_UNIVERSE:
-        raise_not_found("Candidate", ticker)
 
     # Pull the most recent scan result for this ticker
     row = (
@@ -128,6 +127,9 @@ async def get_candidate(
     earnings_rec = await registry.earnings.get_earnings_date(ticker)
     vol_snap = await registry.volatility.get_volatility_metrics(ticker)
     price_rec = await registry.price.get_current_price(ticker)
+
+    if not earnings_rec and not price_rec:
+        raise_not_found("Candidate", ticker)
 
     if earnings_rec:
         days_to = (earnings_rec.earnings_date - date.today()).days

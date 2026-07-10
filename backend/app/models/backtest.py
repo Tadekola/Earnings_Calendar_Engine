@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, Text, func
+from sqlalchemy import Date, DateTime, Float, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -18,7 +18,9 @@ class Backtest(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
     # Config
-    strategy_filter: Mapped[str | None] = mapped_column(String(50))  # DOUBLE_CALENDAR, IRON_BUTTERFLY_ATM, etc.
+    strategy_filter: Mapped[str | None] = mapped_column(
+        String(50)
+    )  # DOUBLE_CALENDAR, IRON_BUTTERFLY_ATM, etc.
     min_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     start_date: Mapped[date | None] = mapped_column(Date)
     end_date: Mapped[date | None] = mapped_column(Date)
@@ -61,7 +63,9 @@ class BacktestTrade(Base):
     exit_spot: Mapped[float | None] = mapped_column(Float)
     exit_credit: Mapped[float | None] = mapped_column(Float)
     exit_iv: Mapped[float | None] = mapped_column(Float)
-    exit_reason: Mapped[str | None] = mapped_column(String(50))  # PLANNED, EARNINGS_HIT, STOP_LOSS, EXPIRED
+    exit_reason: Mapped[str | None] = mapped_column(
+        String(50)
+    )  # PLANNED, EARNINGS_HIT, STOP_LOSS, EXPIRED
     # Earnings
     earnings_date: Mapped[date | None] = mapped_column(Date)
     earnings_move_pct: Mapped[float | None] = mapped_column(Float)

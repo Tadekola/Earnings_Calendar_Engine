@@ -59,7 +59,11 @@ async def explain_ticker(
     # disqualifying for real equities.
     if not earnings_rec and ticker != "XSP":
         rejection_reasons.append("No earnings date found")
-        db_cls = RecommendationClass(db_row.classification) if db_row else RecommendationClass.NO_TRADE
+        db_cls = (
+            RecommendationClass(db_row.classification)
+            if db_row
+            else RecommendationClass.NO_TRADE
+        )
         db_score = db_row.overall_score if db_row and db_row.overall_score is not None else 0.0
         return ExplainResponse(
             ticker=ticker,
@@ -87,6 +91,7 @@ async def explain_ticker(
     # regardless of what the frontend toggle sent. Scoring XSP with the
     # DoubleCalendar or equity butterfly scorers gives garbage (0 stock
     # volume, wrong factor set, etc).
+    resolved_strategy: str | None
     if ticker == "XSP":
         resolved_strategy = "XSP_IRON_BUTTERFLY"
     else:
@@ -103,7 +108,8 @@ async def explain_ticker(
             (
                 s
                 for s in active_strats
-                if s.strategy_type.upper() == resolved_strategy.upper()
+                if resolved_strategy
+                and s.strategy_type.upper() == resolved_strategy.upper()
             ),
             active_strats[0],
         )

@@ -11,6 +11,8 @@ MOCK_EARNINGS: dict[str, dict] = {
         "confidence": "CONFIRMED",
         "quarter": "Q2",
         "year": 2026,
+        "eps_estimate": 1.62,
+        "revenue_estimate": 94300000000,
     },
     "MSFT": {
         "days_offset": 12,
@@ -18,6 +20,8 @@ MOCK_EARNINGS: dict[str, dict] = {
         "confidence": "CONFIRMED",
         "quarter": "Q3",
         "year": 2026,
+        "eps_estimate": 3.21,
+        "revenue_estimate": 68800000000,
     },
     "NVDA": {
         "days_offset": 18,
@@ -25,6 +29,8 @@ MOCK_EARNINGS: dict[str, dict] = {
         "confidence": "CONFIRMED",
         "quarter": "Q1",
         "year": 2026,
+        "eps_estimate": 0.93,
+        "revenue_estimate": 43100000000,
     },
     "AMZN": {
         "days_offset": 10,
@@ -173,12 +179,19 @@ class MockEarningsProvider(EarningsCalendarProvider):
             confidence=mock["confidence"],
             fiscal_quarter=mock["quarter"],
             fiscal_year=mock["year"],
+            eps_estimate=mock.get("eps_estimate"),
+            revenue_estimate=mock.get("revenue_estimate"),
+            estimate_last_updated=datetime.now(UTC),
             meta=ProviderMeta(
                 source_name=self._source,
                 freshness_timestamp=datetime.now(UTC),
                 confidence_score={"CONFIRMED": 0.95, "ESTIMATED": 0.7, "UNVERIFIED": 0.3}.get(
                     mock["confidence"], 0.3
                 ),
+                provenance={
+                    "mode": "simulation",
+                    "note": "Synthetic estimates for local development only.",
+                },
             ),
         )
 

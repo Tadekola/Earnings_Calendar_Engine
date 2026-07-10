@@ -1,6 +1,6 @@
 # Earnings Calendar Engine (ECE)
 
-> **An institutional-grade, fully automated Pre-Earnings Options Scanner, Scoring Engine, and Trade Builder for liquid U.S. equities and index products.**
+> **A live-data Pre-Earnings Options Scanner, Scoring Engine, and Trade Builder for liquid U.S. equities and index products, built for auditable investment decision support.**
 
 [![Tests](https://img.shields.io/badge/tests-189%20passing-brightgreen)](./backend/tests)
 [![Scoring](https://img.shields.io/badge/scoring-v1.1.0-orange)](./backend/app/services/scoring.py)
@@ -25,6 +25,8 @@ The **Earnings Calendar Engine** is a full-stack quantitative options scanning p
 7. **Explains** every decision with full audit trail and per-factor rationale
 8. **Backtests** recommendations against historical scan data with P&L analytics
 
+The app is designed to be a high-trust research aid, not an oracle. Live scans preserve provider source, freshness, earnings-date confidence, EPS consensus estimate, revenue consensus estimate, and data-quality notes so every recommendation can be checked before capital is committed.
+
 The platform supports **three strategy types** across **four execution layers**:
 
 | Layer | Phase | Strategy | Days to Earnings |
@@ -39,7 +41,7 @@ The engine exploits two of the most reliable and repeatable phenomena in options
 - **Theta Decay Differential** — Short-dated options decay exponentially faster than long-dated options
 - **Post-Earnings IV Crush** — Implied Volatility collapses 20-40% immediately after an earnings announcement, benefiting the premium seller
 
-> **Disclaimer:** This application is for educational and decision-support purposes only. It does not guarantee profits. Options trading involves significant risk of loss. Always consult a licensed financial advisor before trading.
+> **Disclaimer:** This application is for educational and decision-support purposes only. It does not guarantee profits or replace independent due diligence. Options trading involves significant risk of loss. Verify earnings dates, estimates, liquidity, and order pricing with your broker and primary market data sources before trading.
 
 ---
 
@@ -181,8 +183,16 @@ Butterfly candidates are scored on three factors: **IV Percentile** (weight 35),
 
 ### Data & Providers
 - **Live Data Providers** — FMP (`/stable` endpoints) for earnings & prices, Tradier for options chains with full Greeks
+- **Wall Street Estimate Visibility** — Upcoming earnings responses include EPS consensus estimate, revenue consensus estimate, actual values when available, provider source, estimate freshness, and row-level data-quality notes
 - **Tradier Fallback Pricing** — Index products (XSP) automatically fall back to Tradier `/markets/quotes` when FMP returns no data
 - **Computed Volatility** — RV10, RV20, RV30, ATR, ATM IV (averaged put+call), IV rank/percentile (proper percentile calculation), term structure slope
+
+### Data Integrity Workflow
+- Run in `STRICT_LIVE_DATA=true` and `ALLOW_SIMULATION=false` for production research.
+- Treat rows marked `SIM` or `mock_*` as local-development data only.
+- Confirm any row missing EPS or revenue estimates before relying on the scan.
+- Re-check broker quotes before entry; options bid/ask and Greeks can move materially between scan and order placement.
+- Use recommendations as decision support, not as investment advice or an automated authority.
 
 ### Frontend
 - **10 Frontend Pages** — Dashboard, Scan Results, Scan History, Trade Builder, Candidate Detail (with IV term structure chart), Rejections, Audit Trail, Settings, Backtests

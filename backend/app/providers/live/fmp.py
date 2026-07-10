@@ -20,6 +20,38 @@ logger = get_logger(__name__)
 
 FMP_BASE_URL = "https://financialmodelingprep.com/stable"
 
+
+def _as_float(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_present(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time(), tzinfo=UTC)
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
 # Built-in S&P 500 constituent list (Q1 2025).
 # Used as fallback when FMP /sp500-constituent is unavailable.
 _SP500_TICKERS: list[str] = [
@@ -646,6 +678,25 @@ class FMPEarningsProvider(EarningsCalendarProvider):
             except ValueError:
                 pass
 
+        estimate_last_updated = _parse_datetime(item.get("lastUpdated"))
+        provenance = {
+            "endpoint": "/earnings-calendar",
+            "symbol": sym.upper(),
+            "fields": [
+                field
+                for field in (
+                    "date",
+                    "time",
+                    "epsEstimated",
+                    "epsActual",
+                    "revenueEstimated",
+                    "revenueActual",
+                    "lastUpdated",
+                )
+                if field in item
+            ],
+        }
+
         return EarningsRecord(
             ticker=sym.upper(),
             earnings_date=earnings_date,
@@ -653,10 +704,18 @@ class FMPEarningsProvider(EarningsCalendarProvider):
             confidence=self._infer_confidence(item, earnings_date),
             fiscal_quarter=quarter,
             fiscal_year=year,
+            eps_estimate=_as_float(item.get("epsEstimated")),
+            eps_actual=_as_float(_first_present(item.get("epsActual"), item.get("eps"))),
+            revenue_estimate=_as_float(item.get("revenueEstimated")),
+            revenue_actual=_as_float(
+                _first_present(item.get("revenueActual"), item.get("revenue"))
+            ),
+            estimate_last_updated=estimate_last_updated,
             meta=ProviderMeta(
                 source_name=self._source,
                 freshness_timestamp=datetime.now(UTC),
                 confidence_score=0.85,
+                provenance=provenance,
             ),
         )
 

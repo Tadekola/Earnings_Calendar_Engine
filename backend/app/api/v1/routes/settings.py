@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import require_api_key
 from app.db.session import get_db
 from app.schemas.settings import (
     AppSettingsResponse,
@@ -68,6 +69,7 @@ async def get_settings(request: Request) -> AppSettingsResponse:
 async def update_settings(
     request: Request,
     body: AppSettingsUpdateRequest,
+    _: None = Depends(require_api_key),
     db: AsyncSession = Depends(get_db),
 ) -> AppSettingsResponse:
     from app.services.settings_persistence import SettingsPersistenceService
@@ -122,7 +124,10 @@ async def get_scheduler_status(request: Request) -> SchedulerStatusResponse:
 
 
 @router.post("/scheduler/trigger")
-async def trigger_scan_now(request: Request) -> dict:
+async def trigger_scan_now(
+    request: Request,
+    _: None = Depends(require_api_key),
+) -> dict:
     """Manually trigger an immediate scan."""
     from app.services.scheduler import scheduled_scan
 

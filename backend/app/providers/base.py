@@ -36,6 +36,11 @@ class EarningsRecord:
     confidence: str = "ESTIMATED"
     fiscal_quarter: str | None = None
     fiscal_year: int | None = None
+    eps_estimate: float | None = None
+    eps_actual: float | None = None
+    revenue_estimate: float | None = None
+    revenue_actual: float | None = None
+    estimate_last_updated: datetime | None = None
     meta: ProviderMeta = field(default_factory=lambda: ProviderMeta(source_name="unknown"))
 
 

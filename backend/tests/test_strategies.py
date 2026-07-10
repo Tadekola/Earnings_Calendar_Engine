@@ -143,13 +143,15 @@ def test_strategy_factory(live_settings, mock_registry):
 
     factory = StrategyFactory(live_settings, mock_registry)
     strategies = factory.get_active_strategies()
-    assert len(strategies) == 3
+    assert len(strategies) == 4
     assert isinstance(strategies[0], DoubleCalendarStrategy)
     assert isinstance(strategies[1], ButterflyStrategy)
-    assert isinstance(strategies[2], XSPButterflyStrategy)
+    assert isinstance(strategies[2], ButterflyStrategy)
+    assert isinstance(strategies[3], XSPButterflyStrategy)
     assert strategies[0].strategy_type == "DOUBLE_CALENDAR"
     assert strategies[1].strategy_type == "IRON_BUTTERFLY_ATM"
-    assert strategies[2].strategy_type == "XSP_IRON_BUTTERFLY"
+    assert strategies[2].strategy_type == "IRON_BUTTERFLY_BULLISH"
+    assert strategies[3].strategy_type == "XSP_IRON_BUTTERFLY"
 
 
 def test_butterfly_scoring_iv_percentile(live_settings, mock_registry, mock_chain, mock_vol):

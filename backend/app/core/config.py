@@ -167,6 +167,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: Environment = Environment.LOCAL
     LOG_LEVEL: str = "INFO"
     DISCOUNT_RATE: float = 0.05
+    API_AUTH_REQUIRED: bool = False
+    ECE_API_KEY: str = ""
 
     OPERATING_MODE: OperatingMode = OperatingMode.STRICT
 

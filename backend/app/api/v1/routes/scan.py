@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import require_api_key
 from app.db.session import get_db, get_session_factory
 from app.schemas.scan import (
     ScanRequest,
@@ -26,6 +27,7 @@ _running_scans: dict[str, str] = {}  # run_id -> "RUNNING" | "COMPLETED" | "FAIL
 async def run_scan(
     request: Request,
     body: ScanRequest | None = None,
+    _: None = Depends(require_api_key),
     db: AsyncSession = Depends(get_db),
 ) -> ScanRunResponse:
     settings = request.app.state.settings
@@ -104,6 +106,10 @@ async def run_scan(
         started_at=scan_result.started_at,
         completed_at=scan_result.completed_at,
         results=results,
+        universe_source=scan_result.universe_source,
+        universe_total=scan_result.universe_total,
+        earnings_candidates=scan_result.earnings_candidates,
+        quality_candidates=scan_result.quality_candidates,
     )
     _scan_store[scan_result.run_id] = run
     return run
@@ -114,6 +120,7 @@ async def run_scan_async(
     request: Request,
     background_tasks: BackgroundTasks,
     body: ScanRequest | None = None,
+    _: None = Depends(require_api_key),
 ) -> dict:
     """Start a scan in the background and return immediately with run_id.
     Listen on the WebSocket /api/v1/ws/scan for progress and a final
@@ -175,6 +182,10 @@ async def run_scan_async(
                 started_at=scan_result.started_at,
                 completed_at=scan_result.completed_at,
                 results=results,
+                universe_source=scan_result.universe_source,
+                universe_total=scan_result.universe_total,
+                earnings_candidates=scan_result.earnings_candidates,
+                quality_candidates=scan_result.quality_candidates,
             )
             _scan_store[scan_result.run_id] = run
             _running_scans[run_id] = "COMPLETED"

@@ -166,6 +166,8 @@ class LiquidityEngine:
         if not options:
             return {"passed": False, "score": 0.0, "reasons": ["No options to evaluate spreads"]}
 
+        threshold = max_spread if max_spread is not None else self._settings.MAX_BID_ASK_PCT
+
         spread_pcts: list[float] = []
         wide_count = 0
         for o in options:
@@ -174,13 +176,11 @@ class LiquidityEngine:
                 if mid > 0:
                     spread_pct = (o.ask - o.bid) / mid
                     spread_pcts.append(spread_pct)
-                    if spread_pct > self._settings.MAX_BID_ASK_PCT:
+                    if spread_pct > threshold:
                         wide_count += 1
 
         if not spread_pcts:
             return {"passed": False, "score": 0.0, "reasons": ["No valid bid/ask data"]}
-
-        threshold = max_spread if max_spread is not None else self._settings.MAX_BID_ASK_PCT
 
         avg_spread = sum(spread_pcts) / len(spread_pcts)
         details["avg_spread_pct"] = round(avg_spread, 4)
